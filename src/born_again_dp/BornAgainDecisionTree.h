@@ -87,6 +87,9 @@ private:
 	// Final procedure to extract the final solution from the DP memory
 	int collectResultDP(int indexBottom, int indexTop, unsigned int optValue, unsigned int currentDepth);
 
+	// A* search procedure to reconstruct the decision tree -- optimizing the number of splits in the tree
+	unsigned int aStarOptimizeNbSplitsAndBuildTree();
+
 public:
 
     // Main procedure: Building the reborn decision tree (using an exact algorithm) -- the result is guaranteed to have the smallest size and to be faithful

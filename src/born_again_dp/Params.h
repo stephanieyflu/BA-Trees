@@ -39,7 +39,7 @@ class Params
 public:
 
 	/* GENERAL PARAMETERS */
-	int objectiveFunction;					// 0 = Depth ; 1 = NbLeaves ; 2 = Depth then NbLeaves ; 3 = NbLeaves then Depth (not yet implemented) ; 4 = Heuristic
+	int objectiveFunction;					// 0 = Depth ; 1 = NbLeaves ; 2 = Depth then NbLeaves ; 3 = NbLeaves then Depth (not yet implemented) ; 4 = Heuristic ; 5 = A* NbLeaves
 	int nbCellsSampled;						// Number of cells sampled (for the heuristic BA trees)
 	int seed;								// Random seed
 	std::default_random_engine generator;	// Random number generator engine
