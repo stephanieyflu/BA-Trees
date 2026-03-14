@@ -1,0 +1,55 @@
+DATASET_NAME: Pima-Diabetes.train6.csv
+ENSEMBLE: BA
+NB_TREES: 1
+NB_FEATURES: 8
+NB_CLASSES: 2
+MAX_TREE_DEPTH: 11
+Format: node / node type(LN - leave node, IN - internal node) left child / right child / feature / threshold / node_depth / majority class (starts with index 0)
+
+[TREE 0]
+NB_NODES: 45
+0 IN 1 2 1 5.5 0 -1
+1 LN -1 -1 -1 -1 1 0
+2 IN 3 40 5 8.5 1 -1
+3 IN 4 5 7 4.5 2 -1
+4 LN -1 -1 -1 -1 3 0
+5 IN 6 23 7 6.5 3 -1
+6 IN 7 8 1 6.5 4 -1
+7 LN -1 -1 -1 -1 5 0
+8 IN 9 20 2 0.5 5 -1
+9 IN 10 19 5 2.5 6 -1
+10 IN 11 12 1 7.5 7 -1
+11 LN -1 -1 -1 -1 8 0
+12 IN 13 14 7 5.5 8 -1
+13 LN -1 -1 -1 -1 9 0
+14 IN 15 18 4 1.5 9 -1
+15 IN 16 17 5 1.5 10 -1
+16 LN -1 -1 -1 -1 11 0
+17 LN -1 -1 -1 -1 11 1
+18 LN -1 -1 -1 -1 10 1
+19 LN -1 -1 -1 -1 7 1
+20 IN 21 22 5 3.5 6 -1
+21 LN -1 -1 -1 -1 7 0
+22 LN -1 -1 -1 -1 7 1
+23 IN 24 33 1 7.5 4 -1
+24 IN 25 26 5 1.5 5 -1
+25 LN -1 -1 -1 -1 6 0
+26 IN 27 32 5 2.5 6 -1
+27 IN 28 29 1 6.5 7 -1
+28 LN -1 -1 -1 -1 8 0
+29 IN 30 31 2 0.5 8 -1
+30 LN -1 -1 -1 -1 9 1
+31 LN -1 -1 -1 -1 9 0
+32 LN -1 -1 -1 -1 7 1
+33 IN 34 35 2 0.5 5 -1
+34 LN -1 -1 -1 -1 6 1
+35 IN 36 39 4 1.5 6 -1
+36 IN 37 38 5 1.5 7 -1
+37 LN -1 -1 -1 -1 8 0
+38 LN -1 -1 -1 -1 8 1
+39 LN -1 -1 -1 -1 7 1
+40 IN 41 44 1 6.5 2 -1
+41 IN 42 43 7 4.5 3 -1
+42 LN -1 -1 -1 -1 4 0
+43 LN -1 -1 -1 -1 4 1
+44 LN -1 -1 -1 -1 3 1

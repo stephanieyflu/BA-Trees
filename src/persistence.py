@@ -167,7 +167,7 @@ def create_nodes(n_nodes, n_outputs, n_classes, children_left,
                     break
         
         if l == r:
-            tup = (-1, -1, -1, -1, impurities[cur], n_samples[cur], n_samples_norm[cur])
+            tup = (-1, -1, -1, -1, impurities[cur], n_samples[cur], n_samples_norm[cur], 0)
             if cur != 0:
                 out_nodes.append(tup)
                 out_values.append(actual_values[cur])
@@ -189,9 +189,9 @@ def create_nodes(n_nodes, n_outputs, n_classes, children_left,
                 out_nodes.pop()
                 out_values.pop()
                 out_values.pop()
-                tup = (-1, -1, -1, -1, impurities[cur], n_samples[cur], n_samples_norm[cur])
+                tup = (-1, -1, -1, -1, impurities[cur], n_samples[cur], n_samples_norm[cur], 0)
             else:
-                tup = (l, r, features[cur], thresholds[cur], impurities[cur], n_samples[cur], n_samples_norm[cur])
+                tup = (l, r, features[cur], thresholds[cur], impurities[cur], n_samples[cur], n_samples_norm[cur], 0)
                 
 
             if cur != 0:
@@ -217,7 +217,8 @@ def create_nodes(n_nodes, n_outputs, n_classes, children_left,
                                ('threshold', '<f8'),
                                ('impurity', '<f8'),
                                ('n_node_samples', '<i8'),
-                               ('weighted_n_node_samples', '<f8')])
+                               ('weighted_n_node_samples', '<f8'),
+                               ('missing_go_to_left', 'u1')])
     
     for i in range(n_nodes):
         nodes[i] = out_nodes[i]
@@ -241,7 +242,8 @@ def build_tree(X, y, n_features, n_classes, n_outputs, maxTreeDepth,
                                ('threshold', '<f8'),
                                ('impurity', '<f8'),
                                ('n_node_samples', '<i8'),
-                               ('weighted_n_node_samples', '<f8')])
+                               ('weighted_n_node_samples', '<f8'),
+                               ('missing_go_to_left', 'u1')])
     
     # fill values
     actual_values = np.zeros((n_nodes, n_outputs, n_classes[0]), dtype=np.float64)
