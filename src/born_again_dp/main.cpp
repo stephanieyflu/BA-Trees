@@ -23,8 +23,10 @@ int main(int argc, char** argv)
 				bornAgainTree.buildOptimal();
 			else if (c.objectiveFunction == 4)
 				bornAgainTree.buildHeuristic();
-			else if (c.objectiveFunction == 6 || c.objectiveFunction == 7)
+			else if (c.objectiveFunction == 6)
 				bornAgainTree.buildGreedyExact();
+			else if (c.objectiveFunction == 7)
+				bornAgainTree.buildBeamExact();
 			params.stopTime = clock();
 
 			/* EXPORTING STATISTICS AND RESULTS */

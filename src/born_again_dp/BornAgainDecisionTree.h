@@ -91,7 +91,7 @@ private:
 	// NOTE: For now this is used only to compute the objective value; reconstruction still uses the DP table.
 	unsigned int aStarOptimizeNbSplits();
 
-	// Helpers for greedy exact-cell construction
+	// Helpers for greedy / beam exact-cell construction
 	void computeClassCountsRegion(int indexBottom, int indexTop, std::vector<int> & counts);
 	int greedyBuildRegion(int indexBottom, int indexTop, unsigned int currentDepth);
 
@@ -117,6 +117,9 @@ public:
 
 	// Main procedure: greedy construction based on exact cell impurities
 	void buildGreedyExact();
+
+	// Main procedure: beam-search construction based on exact cell impurities
+	void buildBeamExact();
 };
 
 #endif

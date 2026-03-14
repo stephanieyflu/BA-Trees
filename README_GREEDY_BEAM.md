@@ -20,7 +20,7 @@ We introduce two new objective codes:
   - At each node (region), evaluates all possible splits exactly on the **filtered cell space** (`fspaceFinal`) and chooses the split that best reduces impurity (e.g., Gini).
   - Produces a faithful tree on the discretized cell grid but is not guaranteed to be globally optimal in size.
 
-- **7 = BeamSearchExactCells** (optional / future work)
+- **7 = BeamSearchExactCells**
   - Beam search over partial trees with a fixed beam width \(B\).
   - Keeps the best \(B\) partial trees at each depth according to a score (e.g., impurity + splits used).
   - Interpolates between greedy (beam size 1) and exhaustive search.
@@ -162,20 +162,42 @@ This yields a **single greedy BA-tree** that is faithful on the discretized cell
 
 ---
 
-### 5. BeamSearchExactCells (objective 7, optional)
+### 5. BeamSearchExactCells (objective 7)
 
-Beam search is a natural extension:
+Beam search is implemented as a search over **partial trees** with a fixed beam width \(B\) (currently `BEAM_WIDTH = 5` in `buildBeamExact`).
 
-- A **state** represents:
-  - A partial tree (or at least a list of pending regions),
-  - A cost so far (splits used),
-  - An impurity-based score (e.g., sum of region impurities).
-- At each depth:
-  - Expand each state in the current beam by splitting one of its pending regions in all possible ways.
-  - Score resulting states and keep the **best B** as the next beam.
-  - Stop when all states in the beam have only pure regions (all leaves).
+- A **state** (`BeamState` in `BornAgainDecisionTree.cpp`) contains:
+  - A list of pending regions `(indexBottom, indexTop)`,
+  - A mapping from each pending region to a node ID in the state’s local `tree`,
+  - A local `std::vector<Node>` representing the partial BA-tree,
+  - The number of splits so far and a heuristic score.
+- The **score** is:
+  - The sum of Gini impurities of all pending regions (using `computeClassCountsRegion`),
+  - Plus the number of splits, so the beam prefers purer trees with fewer splits.
 
-This approach can be implemented after `GreedyExactCells` is working, by lifting `greedyBuildRegion`’s scoring and splitting logic into a state-space search over partial trees.
+Algorithm:
+
+1. Initialize the beam with a single state:
+   - One root leaf covering the whole space,
+   - Root classification = majority class over all cells.
+2. While the beam is non-empty and a max-iteration guard is not hit:
+   - If all regions in all states are pure, stop.
+   - For each state in the current beam:
+     - Choose the **most impure region** to expand.
+     - Enumerate all candidate splits `(feature k, level l)` for that region.
+     - For each candidate, compute:
+       - Left/right child regions and class counts via `computeClassCountsRegion`,
+       - Weighted Gini impurity of the split.
+     - Keep the **top few** (currently 3) candidate splits, and for each:
+       - Create a child state by:
+         - Turning the parent node into an internal node with that split,
+         - Creating left/right leaf children with majority labels,
+         - Updating the pending region list and node-ID mapping.
+       - Recompute the child’s score.
+   - Merge all child states into a new beam, sort by score, and keep the best `B`.
+3. After termination, pick the best state in the beam and copy its `tree` into `rebornTree`, recomputing `finalSplits`, `finalLeaves`, and `finalDepth`.
+
+`-obj 7` in the CLI now calls `buildBeamExact`, so beam search is fully implemented and usable.
 
 ---
 

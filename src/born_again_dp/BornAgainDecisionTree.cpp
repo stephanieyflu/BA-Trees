@@ -1,6 +1,8 @@
 #include "BornAgainDecisionTree.h"
 #include <queue>
 #include <utility>
+#include <functional>
+#include <algorithm>
 
 unsigned int BornAgainDecisionTree::dynamicProgrammingOptimizeDepth(int indexBottom, int indexTop)
 {
@@ -540,6 +542,335 @@ void BornAgainDecisionTree::buildGreedyExact()
 
 	rebornTree.clear();
 	greedyBuildRegion(0, (int)fspaceFinal.nbCells - 1, 0);
+}
+
+void BornAgainDecisionTree::buildBeamExact()
+{
+	finalSplits = 0;
+	finalLeaves = 0;
+	finalDepth = 0;
+	iterationsDP = 0;
+	regionsMemorizedDP = 0;
+
+	// Initialize the cells structures and keep useful hyperplanes
+	fspaceOriginal.initializeCells(randomForest->getHyperplanes(), false);
+	fspaceFinal.initializeCells(fspaceOriginal.exportUsefulHyperplanes(), true);
+
+	// Beam search over partial trees
+	struct BeamState
+	{
+		std::vector<std::pair<int, int>> regions;      // pending regions
+		std::vector<int> regionNodeIDs;                // node index in tree for each region
+		std::vector<Node> tree;                        // local tree
+		unsigned int splits;                           // number of internal nodes
+		double score;                                  // heuristic score (lower is better)
+	};
+
+	auto regionImpurity = [&](int indexBottom, int indexTop) -> double
+	{
+		std::vector<int> counts(params->nbClasses, 0);
+		computeClassCountsRegion(indexBottom, indexTop, counts);
+		int total = 0;
+		for (int c = 0; c < params->nbClasses; c++) total += counts[c];
+		if (total == 0) return 0.0;
+		double sumSq = 0.0;
+		for (int c = 0; c < params->nbClasses; c++)
+		{
+			if (counts[c] > 0)
+			{
+				double p = (double)counts[c] / (double)total;
+				sumSq += p * p;
+			}
+		}
+		return 1.0 - sumSq;
+	};
+
+	auto stateScore = [&](const BeamState & s) -> double
+	{
+		double sc = 0.0;
+		for (const auto & reg : s.regions)
+			sc += regionImpurity(reg.first, reg.second);
+		return sc + (double)s.splits;
+	};
+
+	// Initialize beam with a single root leaf covering the whole space
+	BeamState root;
+	root.tree.clear();
+	root.regions.clear();
+	root.regionNodeIDs.clear();
+	root.splits = 0;
+
+	// Create root leaf with majority class over entire space
+	std::vector<int> rootCounts(params->nbClasses, 0);
+	computeClassCountsRegion(0, (int)fspaceFinal.nbCells - 1, rootCounts);
+	int majorityClass = 0;
+	int majorityCount = -1;
+	for (int c = 0; c < params->nbClasses; c++)
+	{
+		if (rootCounts[c] > majorityCount)
+		{
+			majorityCount = rootCounts[c];
+			majorityClass = c;
+		}
+	}
+
+	root.tree.push_back(Node());
+	root.tree[0].nodeType = Node::NODE_LEAF;
+	root.tree[0].splitFeature = -1;
+	root.tree[0].splitValue = -1;
+	root.tree[0].classification = majorityClass;
+	root.tree[0].nodeID = 0;
+	root.tree[0].depth = 0;
+
+	root.regions.push_back(std::make_pair(0, (int)fspaceFinal.nbCells - 1));
+	root.regionNodeIDs.push_back(0);
+	root.score = stateScore(root);
+
+	std::vector<BeamState> beam;
+	beam.push_back(root);
+
+	const int BEAM_WIDTH = 5;
+	const int MAX_ITERS = 100000;
+	int iter = 0;
+
+	while (!beam.empty() && iter < MAX_ITERS)
+	{
+		iter++;
+
+		// Check if all states in beam are fully pure
+		bool allPure = true;
+		for (const auto & s : beam)
+		{
+			for (const auto & reg : s.regions)
+			{
+				if (regionImpurity(reg.first, reg.second) > 0.0)
+				{
+					allPure = false;
+					break;
+				}
+			}
+			if (!allPure) break;
+		}
+
+		if (allPure)
+			break;
+
+		std::vector<BeamState> newBeam;
+
+		for (const auto & s : beam)
+		{
+			// Find the most impure region in this state
+			int bestRegionIdx = -1;
+			double worstImp = 0.0;
+			for (int i = 0; i < (int)s.regions.size(); i++)
+			{
+				double imp = regionImpurity(s.regions[i].first, s.regions[i].second);
+				if (imp > worstImp)
+				{
+					worstImp = imp;
+					bestRegionIdx = i;
+				}
+			}
+
+			if (bestRegionIdx == -1 || worstImp == 0.0)
+			{
+				// Nothing to expand in this state
+				newBeam.push_back(s);
+				continue;
+			}
+
+			int indexBottom = s.regions[bestRegionIdx].first;
+			int indexTop = s.regions[bestRegionIdx].second;
+			int parentNodeID = s.regionNodeIDs[bestRegionIdx];
+
+			// Enumerate candidate splits and keep the best few
+			struct Cand
+			{
+				int feature;
+				int level;
+				int indexTopLeft;
+				int indexBottomRight;
+				double score;
+				std::vector<int> leftCounts;
+				std::vector<int> rightCounts;
+			};
+
+			std::vector<Cand> candidates;
+
+			for (int k = 0; k < params->nbFeatures; k++)
+			{
+				const int codeBookValue = fspaceFinal.codeBook[k];
+				const int rangeLow = fspaceFinal.keyToCell(indexBottom, k);
+				const int rangeUp = fspaceFinal.keyToCell(indexTop, k);
+				if (rangeLow == rangeUp) continue;
+
+				for (int l = rangeLow; l < rangeUp; l++)
+				{
+					int indexTopLeft = indexTop + codeBookValue * (l - rangeUp);
+					int indexBottomRight = indexBottom + codeBookValue * (l + 1 - rangeLow);
+
+					std::vector<int> leftCounts(params->nbClasses, 0);
+					std::vector<int> rightCounts(params->nbClasses, 0);
+					computeClassCountsRegion(indexBottom, indexTopLeft, leftCounts);
+					computeClassCountsRegion(indexBottomRight, indexTop, rightCounts);
+
+					int leftTotal = 0;
+					int rightTotal = 0;
+					for (int c = 0; c < params->nbClasses; c++)
+					{
+						leftTotal += leftCounts[c];
+						rightTotal += rightCounts[c];
+					}
+
+					if (leftTotal == 0 || rightTotal == 0) continue;
+
+					double giniLeft = 0.0;
+					double giniRight = 0.0;
+					for (int c = 0; c < params->nbClasses; c++)
+					{
+						if (leftCounts[c] > 0)
+						{
+							double p = (double)leftCounts[c] / (double)leftTotal;
+							giniLeft += p * p;
+						}
+						if (rightCounts[c] > 0)
+						{
+							double p = (double)rightCounts[c] / (double)rightTotal;
+							giniRight += p * p;
+						}
+					}
+					giniLeft = 1.0 - giniLeft;
+					giniRight = 1.0 - giniRight;
+
+					double weighted = ((double)leftTotal * giniLeft + (double)rightTotal * giniRight) / (double)(leftTotal + rightTotal);
+
+					Cand cnd;
+					cnd.feature = k;
+					cnd.level = l;
+					cnd.indexTopLeft = indexTopLeft;
+					cnd.indexBottomRight = indexBottomRight;
+					cnd.score = weighted;
+					cnd.leftCounts = leftCounts;
+					cnd.rightCounts = rightCounts;
+					candidates.push_back(std::move(cnd));
+				}
+			}
+
+			if (candidates.empty())
+			{
+				// No valid split; keep state as is
+				newBeam.push_back(s);
+				continue;
+			}
+
+			std::sort(candidates.begin(), candidates.end(),
+			          [](const Cand & a, const Cand & b) { return a.score < b.score; });
+
+			int maxChildren = std::min((int)candidates.size(), 3); // expand top 3 splits per state
+
+			for (int ci = 0; ci < maxChildren; ci++)
+			{
+				const Cand & cnd = candidates[ci];
+				BeamState child = s;
+				child.splits++;
+
+				// Turn parent node into internal node
+				Node & parent = child.tree[parentNodeID];
+				parent.nodeType = Node::NODE_INTERNAL;
+				parent.splitFeature = cnd.feature;
+				parent.splitValue = fspaceFinal.orderedHyperplaneLevels[cnd.feature][cnd.level];
+
+				int parentDepth = parent.depth;
+
+				// Left child
+				child.tree.push_back(Node());
+				int leftID = (int)child.tree.size() - 1;
+				child.tree[leftID].nodeType = Node::NODE_LEAF;
+				child.tree[leftID].splitFeature = -1;
+				child.tree[leftID].splitValue = -1;
+				int leftMajority = 0, leftMax = -1;
+				for (int c = 0; c < params->nbClasses; c++)
+				{
+					if (cnd.leftCounts[c] > leftMax)
+					{
+						leftMax = cnd.leftCounts[c];
+						leftMajority = c;
+					}
+				}
+				child.tree[leftID].classification = leftMajority;
+				child.tree[leftID].nodeID = leftID;
+				child.tree[leftID].depth = parentDepth + 1;
+
+				// Right child
+				child.tree.push_back(Node());
+				int rightID = (int)child.tree.size() - 1;
+				child.tree[rightID].nodeType = Node::NODE_LEAF;
+				child.tree[rightID].splitFeature = -1;
+				child.tree[rightID].splitValue = -1;
+				int rightMajority = 0, rightMax = -1;
+				for (int c = 0; c < params->nbClasses; c++)
+				{
+					if (cnd.rightCounts[c] > rightMax)
+					{
+						rightMax = cnd.rightCounts[c];
+						rightMajority = c;
+					}
+				}
+				child.tree[rightID].classification = rightMajority;
+				child.tree[rightID].nodeID = rightID;
+				child.tree[rightID].depth = parentDepth + 1;
+
+				parent.leftChild = leftID;
+				parent.rightChild = rightID;
+
+				// Update regions
+				child.regions.erase(child.regions.begin() + bestRegionIdx);
+				child.regionNodeIDs.erase(child.regionNodeIDs.begin() + bestRegionIdx);
+
+				child.regions.push_back(std::make_pair(indexBottom, cnd.indexTopLeft));
+				child.regionNodeIDs.push_back(leftID);
+				child.regions.push_back(std::make_pair(cnd.indexBottomRight, indexTop));
+				child.regionNodeIDs.push_back(rightID);
+
+				child.score = stateScore(child);
+
+				newBeam.push_back(std::move(child));
+			}
+		}
+
+		if (newBeam.empty())
+			break;
+
+		std::sort(newBeam.begin(), newBeam.end(),
+		          [](const BeamState & a, const BeamState & b) { return a.score < b.score; });
+
+		if ((int)newBeam.size() > BEAM_WIDTH)
+			newBeam.resize(BEAM_WIDTH);
+
+		beam.swap(newBeam);
+	}
+
+	// Choose best state from beam and copy its tree into rebornTree
+	if (!beam.empty())
+	{
+		const BeamState * best = &beam[0];
+		for (const auto & s : beam)
+		{
+			if (s.score < best->score)
+				best = &s;
+		}
+
+		rebornTree = best->tree;
+		finalSplits = 0;
+		finalLeaves = 0;
+		finalDepth = 0;
+		for (const auto & n : rebornTree)
+		{
+			if (n.nodeType == Node::NODE_INTERNAL) finalSplits++;
+			else if (n.nodeType == Node::NODE_LEAF) finalLeaves++;
+			if ((unsigned int)n.depth > finalDepth) finalDepth = n.depth;
+		}
+	}
 }
 
 // Simple purity test used by the A* search: a region is considered impure
