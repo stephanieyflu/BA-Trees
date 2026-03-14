@@ -19,10 +19,12 @@ int main(int argc, char** argv)
 			/* CONSTRUCTING THE BORN-AGAIN TREE */
 			params.startTime = clock();
 			BornAgainDecisionTree bornAgainTree(&params, &randomForest);
-			if (c.objectiveFunction == 0 || c.objectiveFunction == 1 || c.objectiveFunction == 2)
+			if (c.objectiveFunction == 0 || c.objectiveFunction == 1 || c.objectiveFunction == 2 || c.objectiveFunction == 5)
 				bornAgainTree.buildOptimal();
 			else if (c.objectiveFunction == 4)
 				bornAgainTree.buildHeuristic();
+			else if (c.objectiveFunction == 6 || c.objectiveFunction == 7)
+				bornAgainTree.buildGreedyExact();
 			params.stopTime = clock();
 
 			/* EXPORTING STATISTICS AND RESULTS */

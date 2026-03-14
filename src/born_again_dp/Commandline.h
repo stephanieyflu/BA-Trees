@@ -34,7 +34,7 @@ public:
 	std::string output_name;		// Output path
 	bool command_ok;				// Boolean to check if the command line is valid
 	int nbTrees;					// Hard limit on the number of trees (defaults to the number of trees from the input data)
-	int objectiveFunction;			// 0 = Depth ; 1 = NbLeaves ; 2 = Depth then NbLeaves ; 3 = NbLeaves then Depth (not yet implemented) ; 4 = Heuristic BA tree (with faithfulness certificate if the pre-processor flag "USING_CPLEX" is defined and CPLEX is linked) ; 5 = A* NbLeaves
+	int objectiveFunction;			// 0 = Depth ; 1 = NbLeaves ; 2 = Depth then NbLeaves ; 3 = NbLeaves then Depth (not yet implemented) ; 4 = Heuristic BA tree (with faithfulness certificate if the pre-processor flag "USING_CPLEX" is defined and CPLEX is linked) ; 5 = A* NbLeaves ; 6 = GreedyExactCells ; 7 = BeamSearchExactCells (not yet implemented)
 	int seed;						// Random seed (only impacts the heuristic)
 
 	// Constructor

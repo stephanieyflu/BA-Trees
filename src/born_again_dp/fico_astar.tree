@@ -7,4 +7,4 @@ MAX_TREE_DEPTH: 0
 Format: node / node type(LN - leave node, IN - internal node) left child / right child / feature / threshold / node_depth / majority class (starts with index 0)
 
 [TREE 0]
-NB_NODES: 32481
+NB_NODES: 30779

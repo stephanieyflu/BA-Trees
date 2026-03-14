@@ -87,8 +87,13 @@ private:
 	// Final procedure to extract the final solution from the DP memory
 	int collectResultDP(int indexBottom, int indexTop, unsigned int optValue, unsigned int currentDepth);
 
-	// A* search procedure to reconstruct the decision tree -- optimizing the number of splits in the tree
-	unsigned int aStarOptimizeNbSplitsAndBuildTree();
+	// A* search procedure to compute the optimal number of splits (number of leaves - 1)
+	// NOTE: For now this is used only to compute the objective value; reconstruction still uses the DP table.
+	unsigned int aStarOptimizeNbSplits();
+
+	// Helpers for greedy exact-cell construction
+	void computeClassCountsRegion(int indexBottom, int indexTop, std::vector<int> & counts);
+	int greedyBuildRegion(int indexBottom, int indexTop, unsigned int currentDepth);
 
 public:
 
@@ -109,6 +114,9 @@ public:
 
 	// Constructor
 	BornAgainDecisionTree(Params * params, RandomForest * randomForest): params(params), randomForest(randomForest), fspaceOriginal(params, randomForest), fspaceFinal(params, randomForest){};
+
+	// Main procedure: greedy construction based on exact cell impurities
+	void buildGreedyExact();
 };
 
 #endif

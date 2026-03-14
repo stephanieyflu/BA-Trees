@@ -254,7 +254,21 @@ void BornAgainDecisionTree::buildOptimal()
 	}
 	else if (params->objectiveFunction == 5)
 	{
-		finalObjective = aStarOptimizeNbSplitsAndBuildTree();
+		// Use A* to compute an optimal objective value w.r.t. number of splits,
+		// then rely on the DP memory + collectResultDP to reconstruct the tree.
+		finalObjective = aStarOptimizeNbSplits();
+
+		// Rebuild the DP table for objective 1 to extract the structure of an optimal tree.
+		iterationsDP = 0;
+		regionsMemorizedDP = 0;
+		regions = std::vector<std::vector<unsigned int>>(fspaceFinal.nbCells);
+		for (int index = 0; index < fspaceFinal.nbCells; index++)
+			regions[index] = std::vector<unsigned int>(fspaceFinal.keyToHash(index, fspaceFinal.nbCells - 1) + 1, UINT_MAX);
+
+		unsigned int dpObjective = dynamicProgrammingOptimizeNbSplits(0, (int)fspaceFinal.nbCells - 1);
+		if (dpObjective != finalObjective)
+			throw std::string("Inconsistent objectives between A* and DP");
+		collectResultDP(0, (int)fspaceFinal.nbCells - 1, dpObjective, 0);
 	}
 	else
 	{
@@ -264,7 +278,16 @@ void BornAgainDecisionTree::buildOptimal()
 
 void BornAgainDecisionTree::displayRunStatistics()
 {
-	std::vector<std::string> objectives = {"Depth","NbLeaves","Depth then NbLeaves","NbLeaves then Depth","Heuristic","A* NbLeaves"};
+	std::vector<std::string> objectives = {
+		"Depth",
+		"NbLeaves",
+		"Depth then NbLeaves",
+		"NbLeaves then Depth",
+		"Heuristic",
+		"A* NbLeaves",
+		"GreedyExactCells",
+		"BeamSearchExactCells"
+	};
 	std::cout << "----- OPTIMAL SOLUTION FOUND                      " << std::endl;
 	std::cout << "----- OBJECTIVE:                                  " << objectives[params->objectiveFunction] << std::endl;
 	std::cout << "----- CPU TIME(s):                                " << (double)(params->stopTime - params->startTime) / (double)CLOCKS_PER_SEC << std::endl;
@@ -334,31 +357,211 @@ void BornAgainDecisionTree::exportBATree(std::string fileName)
 		std::cout << "PROBLEM OPENING FILE  " << fileName << std::endl;
 }
 
-// Simple purity test used by the A* search: a region is considered pure if its
-// two corner cells share the same class or if it is reduced to a single cell.
-static bool isRegionPureAStar(const FSpace & fspace, int indexBottom, int indexTop)
+void BornAgainDecisionTree::computeClassCountsRegion(int indexBottom, int indexTop, std::vector<int> & counts)
 {
-	if (indexBottom == indexTop) return true;
-	if (indexBottom < 0 || indexTop < 0 || indexBottom >= fspace.nbCells || indexTop >= fspace.nbCells) return false;
-	return fspace.cells[indexBottom] == fspace.cells[indexTop];
-}
+	std::fill(counts.begin(), counts.end(), 0);
 
-// A* search over regions to minimize the number of splits; builds the rebornTree
-// directly from the sequence of splits found along the best path.
-unsigned int BornAgainDecisionTree::aStarOptimizeNbSplitsAndBuildTree()
-{
-	struct AStarAction
+	std::vector<int> low(params->nbFeatures);
+	std::vector<int> up(params->nbFeatures);
+	for (int k = 0; k < params->nbFeatures; k++)
 	{
-		int indexBottom;
-		int indexTop;
-		int feature;
-		int level;
+		low[k] = fspaceFinal.keyToCell(indexBottom, k);
+		up[k] = fspaceFinal.keyToCell(indexTop, k);
+	}
+
+	std::function<void(int,int)> recurse = [&](int k, int keyPrefix)
+	{
+		if (k == params->nbFeatures)
+		{
+			int cls = fspaceFinal.cells[keyPrefix];
+			if (cls >= 0 && cls < params->nbClasses)
+				counts[cls]++;
+			return;
+		}
+		for (int i = low[k]; i <= up[k]; i++)
+		{
+			int nextKey = keyPrefix + i * fspaceFinal.codeBook[k];
+			recurse(k + 1, nextKey);
+		}
 	};
 
+	recurse(0, 0);
+}
+
+int BornAgainDecisionTree::greedyBuildRegion(int indexBottom, int indexTop, unsigned int currentDepth)
+{
+	std::vector<int> counts(params->nbClasses, 0);
+	computeClassCountsRegion(indexBottom, indexTop, counts);
+
+	int total = 0;
+	int majorityClass = -1;
+	int majorityCount = 0;
+	int nonZeroClasses = 0;
+	for (int c = 0; c < params->nbClasses; c++)
+	{
+		total += counts[c];
+		if (counts[c] > 0)
+		{
+			nonZeroClasses++;
+			if (counts[c] > majorityCount)
+			{
+				majorityCount = counts[c];
+				majorityClass = c;
+			}
+		}
+	}
+
+	// If region is pure or empty, create a leaf
+	if (nonZeroClasses <= 1 || total == 0)
+	{
+		finalLeaves++;
+		if (currentDepth > finalDepth) finalDepth = currentDepth;
+		rebornTree.push_back(Node());
+		int nodeID = (int)rebornTree.size() - 1;
+		rebornTree[nodeID].nodeType = Node::NODE_LEAF;
+		rebornTree[nodeID].splitFeature = -1;
+		rebornTree[nodeID].splitValue = -1;
+		rebornTree[nodeID].classification = (majorityClass >= 0) ? majorityClass : 0;
+		rebornTree[nodeID].nodeID = nodeID;
+		rebornTree[nodeID].depth = currentDepth;
+		return nodeID;
+	}
+
+	// Helper to compute Gini impurity from counts and total
+	auto giniFromCounts = [&](const std::vector<int> & cnts, int tot) -> double
+	{
+		if (tot == 0) return 0.0;
+		double sumSq = 0.0;
+		for (int c = 0; c < params->nbClasses; c++)
+		{
+			if (cnts[c] > 0)
+			{
+				double p = (double)cnts[c] / (double)tot;
+				sumSq += p * p;
+			}
+		}
+		return 1.0 - sumSq;
+	};
+
+	double bestScore = 1.e30;
+	int bestFeature = -1;
+	int bestLevel = -1;
+	int bestIndexTopLeft = -1;
+	int bestIndexBottomRight = -1;
+
+	for (int k = 0; k < params->nbFeatures; k++)
+	{
+		const int codeBookValue = fspaceFinal.codeBook[k];
+		const int rangeLow = fspaceFinal.keyToCell(indexBottom, k);
+		const int rangeUp = fspaceFinal.keyToCell(indexTop, k);
+		if (rangeLow == rangeUp) continue;
+
+		for (int l = rangeLow; l < rangeUp; l++)
+		{
+			int indexTopLeft = indexTop + codeBookValue * (l - rangeUp);
+			int indexBottomRight = indexBottom + codeBookValue * (l + 1 - rangeLow);
+
+			std::vector<int> leftCounts(params->nbClasses, 0);
+			std::vector<int> rightCounts(params->nbClasses, 0);
+			computeClassCountsRegion(indexBottom, indexTopLeft, leftCounts);
+			computeClassCountsRegion(indexBottomRight, indexTop, rightCounts);
+
+			int leftTotal = 0;
+			int rightTotal = 0;
+			for (int c = 0; c < params->nbClasses; c++)
+			{
+				leftTotal += leftCounts[c];
+				rightTotal += rightCounts[c];
+			}
+
+			if (leftTotal == 0 || rightTotal == 0) continue;
+
+			double giniLeft = giniFromCounts(leftCounts, leftTotal);
+			double giniRight = giniFromCounts(rightCounts, rightTotal);
+			double weighted = ((double)leftTotal * giniLeft + (double)rightTotal * giniRight) / (double)(leftTotal + rightTotal);
+
+			if (weighted < bestScore)
+			{
+				bestScore = weighted;
+				bestFeature = k;
+				bestLevel = l;
+				bestIndexTopLeft = indexTopLeft;
+				bestIndexBottomRight = indexBottomRight;
+			}
+		}
+	}
+
+	// If no valid split found, create a majority leaf
+	if (bestFeature == -1)
+	{
+		finalLeaves++;
+		if (currentDepth > finalDepth) finalDepth = currentDepth;
+		rebornTree.push_back(Node());
+		int nodeID = (int)rebornTree.size() - 1;
+		rebornTree[nodeID].nodeType = Node::NODE_LEAF;
+		rebornTree[nodeID].splitFeature = -1;
+		rebornTree[nodeID].splitValue = -1;
+		rebornTree[nodeID].classification = (majorityClass >= 0) ? majorityClass : 0;
+		rebornTree[nodeID].nodeID = nodeID;
+		rebornTree[nodeID].depth = currentDepth;
+		return nodeID;
+	}
+
+	// Apply best split and recurse
+	finalSplits++;
+	rebornTree.push_back(Node());
+	int nodeID = (int)rebornTree.size() - 1;
+	rebornTree[nodeID].nodeType = Node::NODE_INTERNAL;
+	rebornTree[nodeID].splitFeature = bestFeature;
+	rebornTree[nodeID].splitValue = fspaceFinal.orderedHyperplaneLevels[bestFeature][bestLevel];
+	rebornTree[nodeID].nodeID = nodeID;
+	rebornTree[nodeID].depth = currentDepth;
+
+	int leftID = greedyBuildRegion(indexBottom, bestIndexTopLeft, currentDepth + 1);
+	int rightID = greedyBuildRegion(bestIndexBottomRight, indexTop, currentDepth + 1);
+
+	rebornTree[nodeID].leftChild = leftID;
+	rebornTree[nodeID].rightChild = rightID;
+
+	return nodeID;
+}
+
+void BornAgainDecisionTree::buildGreedyExact()
+{
+	finalSplits = 0;
+	finalLeaves = 0;
+	finalDepth = 0;
+	iterationsDP = 0;
+	regionsMemorizedDP = 0;
+
+	// Initialize the cells structures and keep useful hyperplanes
+	fspaceOriginal.initializeCells(randomForest->getHyperplanes(), false);
+	fspaceFinal.initializeCells(fspaceOriginal.exportUsefulHyperplanes(), true);
+
+	rebornTree.clear();
+	greedyBuildRegion(0, (int)fspaceFinal.nbCells - 1, 0);
+}
+
+// Simple purity test used by the A* search: a region is considered impure
+// whenever there exists at least one pair of cells with different labels.
+static bool isRegionImpureAStar(const FSpace & fspace, int indexBottom, int indexTop)
+{
+	if (indexBottom == indexTop) return false;
+	if (indexBottom < 0 || indexTop < 0 || indexBottom >= fspace.nbCells || indexTop >= fspace.nbCells) return true;
+	int cls = fspace.cells[indexBottom];
+	for (int idx = indexBottom + 1; idx <= indexTop; ++idx)
+		if (fspace.cells[idx] != cls) return true;
+	return false;
+}
+
+// A* search over regions to minimize the number of splits (equivalent to minimizing
+// the number of leaves). This function only computes the optimal objective value;
+// tree reconstruction is handled separately via the DP memory.
+unsigned int BornAgainDecisionTree::aStarOptimizeNbSplits()
+{
 	struct AStarState
 	{
 		std::vector<std::pair<int,int>> pending;
-		std::vector<AStarAction> actions;
 		unsigned int g;
 		unsigned int h;
 		unsigned int f() const { return g + h; }
@@ -377,7 +580,7 @@ unsigned int BornAgainDecisionTree::aStarOptimizeNbSplitsAndBuildTree()
 		unsigned int h = 0;
 		for (const auto & reg : pending)
 		{
-			if (!isRegionPureAStar(fspaceFinal, reg.first, reg.second))
+			if (isRegionImpureAStar(fspaceFinal, reg.first, reg.second))
 				h += 1;
 		}
 		return h;
@@ -386,7 +589,6 @@ unsigned int BornAgainDecisionTree::aStarOptimizeNbSplitsAndBuildTree()
 	AStarState start;
 	start.pending.clear();
 	start.pending.push_back(std::make_pair(0, (int)fspaceFinal.nbCells - 1));
-	start.actions.clear();
 	start.g = 0;
 	start.h = computeHeuristic(start.pending);
 
@@ -403,106 +605,9 @@ unsigned int BornAgainDecisionTree::aStarOptimizeNbSplitsAndBuildTree()
 		// Count state expansions
 		iterationsDP++;
 
-		// Goal test: all remaining regions are pure under the purity definition above
+		// Goal test: all remaining regions are pure (no impure region left)
 		if (current.h == 0)
 		{
-			// Reconstruct the BA tree from the sequence of split actions
-			rebornTree.clear();
-			finalSplits = 0;
-			finalLeaves = 0;
-			finalDepth = 0;
-
-			struct RegionNode
-			{
-				int indexBottom;
-				int indexTop;
-				int nodeID;
-			};
-
-			std::vector<RegionNode> regionsForBuild;
-
-			// Start with a single leaf covering the whole space
-			rebornTree.push_back(Node());
-			int rootID = (int)rebornTree.size() - 1;
-			rebornTree[rootID].nodeType = Node::NODE_LEAF;
-			rebornTree[rootID].splitFeature = -1;
-			rebornTree[rootID].splitValue = -1;
-			rebornTree[rootID].classification = fspaceFinal.cells[0];
-			rebornTree[rootID].nodeID = rootID;
-			rebornTree[rootID].depth = 0;
-			finalLeaves = 1;
-			finalDepth = 0;
-
-			regionsForBuild.push_back({0, (int)fspaceFinal.nbCells - 1, rootID});
-
-			for (const auto & act : current.actions)
-			{
-				// Find the region corresponding to this action
-				int pos = -1;
-				for (int i = 0; i < (int)regionsForBuild.size(); i++)
-				{
-					if (regionsForBuild[i].indexBottom == act.indexBottom &&
-						regionsForBuild[i].indexTop == act.indexTop)
-					{
-						pos = i;
-						break;
-					}
-				}
-				if (pos == -1)
-					throw std::string("A*: could not find region during reconstruction");
-
-				RegionNode region = regionsForBuild[pos];
-
-				const int k = act.feature;
-				const int l = act.level;
-				const int codeBookValue = fspaceFinal.codeBook[k];
-				const int rangeLow = fspaceFinal.keyToCell(region.indexBottom, k);
-				const int rangeUp = fspaceFinal.keyToCell(region.indexTop, k);
-
-				int indexTopLeft = region.indexTop + codeBookValue * (l - rangeUp);
-				int indexBottomRight = region.indexBottom + codeBookValue * (l + 1 - rangeLow);
-
-				// Turn this leaf into an internal node
-				Node & parent = rebornTree[region.nodeID];
-				parent.nodeType = Node::NODE_INTERNAL;
-				parent.splitFeature = k;
-				parent.splitValue = fspaceFinal.orderedHyperplaneLevels[k][l];
-
-				int parentDepth = parent.depth;
-
-				// Left child
-				rebornTree.push_back(Node());
-				int leftID = (int)rebornTree.size() - 1;
-				rebornTree[leftID].nodeType = Node::NODE_LEAF;
-				rebornTree[leftID].splitFeature = -1;
-				rebornTree[leftID].splitValue = -1;
-				rebornTree[leftID].classification = fspaceFinal.cells[region.indexBottom];
-				rebornTree[leftID].nodeID = leftID;
-				rebornTree[leftID].depth = parentDepth + 1;
-
-				// Right child
-				rebornTree.push_back(Node());
-				int rightID = (int)rebornTree.size() - 1;
-				rebornTree[rightID].nodeType = Node::NODE_LEAF;
-				rebornTree[rightID].splitFeature = -1;
-				rebornTree[rightID].splitValue = -1;
-				rebornTree[rightID].classification = fspaceFinal.cells[indexBottomRight];
-				rebornTree[rightID].nodeID = rightID;
-				rebornTree[rightID].depth = parentDepth + 1;
-
-				parent.leftChild = leftID;
-				parent.rightChild = rightID;
-
-				if (parentDepth + 1 > (int)finalDepth) finalDepth = parentDepth + 1;
-				finalSplits++;
-				finalLeaves++; // replaced one leaf by two => +1 leaf overall
-
-				// Replace region by its two children
-				regionsForBuild.erase(regionsForBuild.begin() + pos);
-				regionsForBuild.push_back({region.indexBottom, indexTopLeft, leftID});
-				regionsForBuild.push_back({indexBottomRight, region.indexTop, rightID});
-			}
-
 			return current.g;
 		}
 
@@ -510,7 +615,7 @@ unsigned int BornAgainDecisionTree::aStarOptimizeNbSplitsAndBuildTree()
 		int regionIdx = -1;
 		for (int i = 0; i < (int)current.pending.size(); i++)
 		{
-			if (!isRegionPureAStar(fspaceFinal, current.pending[i].first, current.pending[i].second))
+			if (isRegionImpureAStar(fspaceFinal, current.pending[i].first, current.pending[i].second))
 			{
 				regionIdx = i;
 				break;
@@ -539,14 +644,6 @@ unsigned int BornAgainDecisionTree::aStarOptimizeNbSplitsAndBuildTree()
 				succ.pending.erase(succ.pending.begin() + regionIdx);
 				succ.pending.push_back(std::make_pair(indexBottom, indexTopLeft));
 				succ.pending.push_back(std::make_pair(indexBottomRight, indexTop));
-
-				succ.actions = current.actions;
-				AStarAction act;
-				act.indexBottom = indexBottom;
-				act.indexTop = indexTop;
-				act.feature = k;
-				act.level = l;
-				succ.actions.push_back(act);
 
 				succ.g = current.g + 1;
 				succ.h = computeHeuristic(succ.pending);
