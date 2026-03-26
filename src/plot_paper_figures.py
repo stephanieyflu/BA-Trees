@@ -491,6 +491,103 @@ def fig_failure_rate(df, out_path, threshold=0.6):
     plt.close(fig)
 
 
+def fig_aggregate_table(df, out_path):
+    """Render aggregate metrics table (mean over folds) as a figure image."""
+    agg = (
+        df.groupby(["dataset", "method"])[
+            ["depth", "leaves", "cpu_time", "rf_acc", "ba_acc", "rf_ba_agreement"]
+        ]
+        .mean()
+        .reset_index()
+    )
+
+    agg["dataset"] = pd.Categorical(agg["dataset"], DATASET_ORDER, ordered=True)
+    agg["method"] = pd.Categorical(agg["method"], ["beam", "dp", "greedy"], ordered=True)
+    agg = agg.sort_values(["dataset", "method"]).reset_index(drop=True)
+    agg.insert(0, "index", range(len(agg)))
+
+    table_df = pd.DataFrame(
+        {
+            "Index": agg["index"],
+            "Dataset": agg["dataset"],
+            "Method": agg["method"],
+            "Depth": agg["depth"].map(lambda x: f"{x:.1f}"),
+            "Leaves": agg["leaves"].map(lambda x: f"{x:.1f}"),
+            "CPU Time (s)": agg["cpu_time"].map(lambda x: f"{x:.4f}"),
+            "RF Acc": agg["rf_acc"].map(lambda x: f"{x:.4f}"),
+            "BA Acc": agg["ba_acc"].map(lambda x: f"{x:.4f}"),
+            "RF-BA Agreement": agg["rf_ba_agreement"].map(lambda x: f"{x:.4f}"),
+        }
+    )
+
+    fig, ax = plt.subplots(figsize=(16, 9))
+    ax.axis("off")
+
+    col_widths = [0.05, 0.23, 0.09, 0.07, 0.08, 0.10, 0.08, 0.08, 0.12]
+    tbl = ax.table(
+        cellText=table_df.values,
+        colLabels=table_df.columns,
+        colWidths=col_widths,
+        cellLoc="center",
+        loc="center",
+    )
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(11)
+    tbl.scale(1.0, 1.2)
+
+    # Header styling + grid
+    for (r, c), cell in tbl.get_celld().items():
+        cell.set_edgecolor("black")
+        cell.set_linewidth(0.35)
+        if r == 0:
+            cell.set_text_props(weight="bold")
+            cell.set_facecolor("#f2f2f2")
+
+    # Minimal highlighting:
+    # - Best RF-BA agreement (max)
+    # - Best BA accuracy (max)
+    # - Fastest CPU time (min)
+    # This keeps emphasis on fidelity + practical runtime.
+    metric_cols = {
+        "cpu_time": (5, "min"),
+        "ba_acc": (7, "max"),
+        "rf_ba_agreement": (8, "max"),
+    }
+    highlight_color = "#e8f5e9"
+    tol = 1e-12
+    for dataset in [d for d in DATASET_ORDER if d in agg["dataset"].astype(str).values]:
+        sub = agg[agg["dataset"].astype(str) == dataset]
+        for metric, (table_col, direction) in metric_cols.items():
+            best = sub[metric].min() if direction == "min" else sub[metric].max()
+            for j in sub.index.tolist():
+                val = float(agg.loc[j, metric])
+                if abs(val - best) <= tol:
+                    table_row = j + 1  # +1 due to header row
+                    cell = tbl[table_row, table_col]
+                    cell.set_facecolor(highlight_color)
+                    cell.set_text_props(weight="bold")
+
+    # Draw only one darker horizontal divider between each dataset group (every 3 rows)
+    ncols = len(table_df.columns)
+    left_x = tbl[1, 0].get_x()
+    right_x = tbl[1, ncols - 1].get_x() + tbl[1, ncols - 1].get_width()
+    for end_row in range(3, len(table_df) + 1, 3):  # data rows are 1..N; header is 0
+        y = tbl[end_row, 0].get_y()  # bottom of this row
+        ax.plot(
+            [left_x, right_x],
+            [y, y],
+            transform=ax.transAxes,
+            color="#222222",
+            linewidth=1.6,
+            solid_capstyle="butt",
+            zorder=5,
+        )
+
+    plt.tight_layout()
+    fig.savefig(out_path, dpi=220, bbox_inches="tight")
+    plt.close(fig)
+
+
 def main():
     df = load_data()
     FIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -525,6 +622,9 @@ def main():
 
     fig_failure_rate(df, FIG_DIR / "fig_failure_rate_060.png", threshold=0.60)
     print(f"Saved {FIG_DIR / 'fig_failure_rate_060.png'}")
+
+    fig_aggregate_table(df, FIG_DIR / "fig_table_aggregate.png")
+    print(f"Saved {FIG_DIR / 'fig_table_aggregate.png'}")
 
 
 if __name__ == "__main__":
