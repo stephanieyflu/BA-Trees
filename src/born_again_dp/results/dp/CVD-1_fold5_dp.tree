@@ -1,0 +1,53 @@
+DATASET_NAME: CVD-1.train5.csv
+ENSEMBLE: BA
+NB_TREES: 1
+NB_FEATURES: 12
+NB_CLASSES: 2
+MAX_TREE_DEPTH: 7
+Format: node / node type(LN - leave node, IN - internal node) left child / right child / feature / threshold / node_depth / majority class (starts with index 0)
+
+[TREE 0]
+NB_NODES: 43
+0 IN 1 4 5 0.5 0 -1
+1 IN 2 3 10 1.5 1 -1
+2 LN -1 -1 -1 -1 2 0
+3 LN -1 -1 -1 -1 2 1
+4 IN 5 26 2 0.5 1 -1
+5 IN 6 17 7 98.5 2 -1
+6 IN 7 8 10 1.5 3 -1
+7 LN -1 -1 -1 -1 4 0
+8 IN 9 12 3 143.5 4 -1
+9 IN 10 11 6 1.5 5 -1
+10 LN -1 -1 -1 -1 6 0
+11 LN -1 -1 -1 -1 6 1
+12 IN 13 14 3 144.5 5 -1
+13 LN -1 -1 -1 -1 6 1
+14 IN 15 16 7 96.5 6 -1
+15 LN -1 -1 -1 -1 7 0
+16 LN -1 -1 -1 -1 7 1
+17 IN 18 23 3 143.5 3 -1
+18 IN 19 22 6 1.5 4 -1
+19 IN 20 21 10 1.5 5 -1
+20 LN -1 -1 -1 -1 6 0
+21 LN -1 -1 -1 -1 6 1
+22 LN -1 -1 -1 -1 5 1
+23 IN 24 25 10 0.5 4 -1
+24 LN -1 -1 -1 -1 5 0
+25 LN -1 -1 -1 -1 5 1
+26 IN 27 36 3 143.5 2 -1
+27 IN 28 35 7 98.5 3 -1
+28 IN 29 32 2 1.5 4 -1
+29 IN 30 31 6 1.5 5 -1
+30 LN -1 -1 -1 -1 6 0
+31 LN -1 -1 -1 -1 6 1
+32 IN 33 34 3 137.5 5 -1
+33 LN -1 -1 -1 -1 6 1
+34 LN -1 -1 -1 -1 6 0
+35 LN -1 -1 -1 -1 4 1
+36 IN 37 42 10 0.5 3 -1
+37 IN 38 41 3 144.5 4 -1
+38 IN 39 40 7 98.5 5 -1
+39 LN -1 -1 -1 -1 6 0
+40 LN -1 -1 -1 -1 6 1
+41 LN -1 -1 -1 -1 5 0
+42 LN -1 -1 -1 -1 4 1

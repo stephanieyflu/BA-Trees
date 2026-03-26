@@ -31,6 +31,7 @@ DATASET_ORDER = [
     "HTRU2",
     "Pima-Diabetes",
     "Seeds",
+    "CVD-1",
 ]
 
 # Short display labels for x-axes (keep full names in text/tables)
@@ -41,6 +42,7 @@ DISPLAY_LABELS = {
     "HTRU2": "HTRU2",
     "Pima-Diabetes": "Pima",
     "Seeds": "Seeds",
+    "CVD-1": "CVD-1",
 }
 
 # Method order and colors (match paper: dp=blue, greedy=orange, beam=green)
@@ -55,6 +57,7 @@ DATASET_MARKERS = {
     "HTRU2": "P",  # plus
     "Pima-Diabetes": "*",
     "Seeds": "^",
+    "CVD-1": "D",
 }
 
 

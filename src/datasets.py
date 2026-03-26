@@ -32,7 +32,8 @@ dataset_names = [
         "FICO",
         "HTRU2",
         "Pima-Diabetes",
-        "Seeds"
+        "Seeds",
+        "CVD-1"
     ]
 
 
