@@ -21,9 +21,9 @@ We introduce two new objective codes:
   - Produces a faithful tree on the discretized cell grid but is not guaranteed to be globally optimal in size.
 
 - **7 = BeamSearchExactCells**
-  - Beam search over partial trees with a fixed beam width \(B\).
+  - Beam search over partial trees with a fixed beam width \(B\) (CLI: **`-beam B`**, default \(B=5\)).
   - Keeps the best \(B\) partial trees at each depth according to a score (e.g., impurity + splits used).
-  - Interpolates between greedy (beam size 1) and exhaustive search.
+  - For \(B\le 1\) the implementation delegates to greedy so results match objective~6 (see sanity check below).
 
 These are added to:
 
@@ -210,7 +210,7 @@ From `src/born_again_dp`:
 ```bash
 mkdir -p results/dp
 mkdir -p results/greedy
-mkdir -p results/beam   # once beam search is implemented
+mkdir -p results/beam
 ```
 
 - **DP (optimal, objective 1)**:
@@ -233,13 +233,13 @@ mkdir -p results/beam   # once beam search is implemented
   - `results/greedy/fico_greedy.out`
   - `results/greedy/fico_greedy.tree`
 
-- **BeamSearchExactCells (objective 7, once implemented)**:
+- **BeamSearchExactCells (objective 7)**:
 
   ```bash
-  ./bornAgain ../resources/forests/FICO/FICO.RF1.txt results/beam/fico_beam -obj 7
+  ./bornAgain ../resources/forests/FICO/FICO.RF1.txt results/beam/fico_beam -obj 7 -beam 5
   ```
 
-  This would create:
+  This creates:
   - `results/beam/fico_beam.out`
   - `results/beam/fico_beam.tree`
 
@@ -255,4 +255,25 @@ For each pair of results (e.g., `results/dp/fico_dp.out` vs `results/greedy/fico
   - Use the Python helpers to compare predictions of the forest and each BA-tree on the train/test data.
 
 This yields clear, quantitative comparisons between optimal DP and approximate greedy/beam-search tree builders.
+
+---
+
+### 7. Beam width CLI and sanity check (`sanity_check/`)
+
+- **`-beam <W>`** (optional, default `5`) sets the beam size for objective **7** only. Parsed in `Commandline.h` and stored in `Params::beamWidth`.
+- **Regression:** For `beamWidth <= 1`, `buildBeamExact()` **delegates to** `buildGreedyExact()` (a naive beam of width 1 would still differ from greedy because of region expansion order and multi-candidate expansion; delegation makes `-obj 7 -beam 1` and `-obj 6` produce the same tree).
+
+**Recommended check** (uses Python so it works with `bornAgain.exe` on Windows, normalizes CRLF, and avoids PowerShell exit-code quirks):
+
+```bash
+cd src/born_again_dp
+make          # Linux / WSL
+# OR on Git Bash / MinGW64 native Windows:
+mingw32-make  # produces bornAgain.exe (or a PE `bornAgain`); do not use a Linux ELF `bornAgain` on Windows
+python sanity_check/run_sanity_check.py
+```
+
+The script **skips Linux ELF** files named `bornAgain` when you are on native Windows (they cause `WinError 193`). You must compile locally with **MinGW** so a Windows PE executable exists.
+
+This writes `sanity_check/results/sanity_result.txt` and compares `greedy.tree` vs `beam_w1.tree`. If the script reports failure, ensure the solver was **rebuilt** after pulling changes to `Commandline.h` / `Params.h` / `BornAgainDecisionTree.cpp`. Git Bash users without Python should run `python sanity_check/run_sanity_check.py` from WSL or install Python; the bare `run_sanity_check.sh` fallback requires a Unix `bornAgain` binary (not always present on native Windows builds).
 

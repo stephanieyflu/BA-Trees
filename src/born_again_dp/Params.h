@@ -40,6 +40,7 @@ public:
 
 	/* GENERAL PARAMETERS */
 	int objectiveFunction;					// 0 = Depth ; 1 = NbLeaves ; 2 = Depth then NbLeaves ; 3 = NbLeaves then Depth (not yet implemented) ; 4 = Heuristic ; 5 = A* NbLeaves ; 6 = GreedyExactCells ; 7 = BeamSearchExactCells (not yet implemented)
+	int beamWidth;							// Beam size for objective 7 (default 5); values <= 1 delegate to greedy construction
 	int nbCellsSampled;						// Number of cells sampled (for the heuristic BA trees)
 	int seed;								// Random seed
 	std::default_random_engine generator;	// Random number generator engine
@@ -57,6 +58,7 @@ public:
 	/* CONSTRUCTOR -- Reading main problem parameters from the input file */
 	Params(std::ifstream & inputFile, int nbTrees, int objectiveFunction, int seed) : nbTrees(nbTrees), objectiveFunction(objectiveFunction), seed(seed)
 	{
+		beamWidth = 5;
 		nbCellsSampled = 1000; // Currently setting manually the number of manufactured samples and seed
 		generator.seed(seed);
 		std::string useless;

@@ -546,6 +546,15 @@ void BornAgainDecisionTree::buildGreedyExact()
 
 void BornAgainDecisionTree::buildBeamExact()
 {
+	// Beam width <= 1: delegate to greedy (depth-first best split on exact cells). A naive
+	// beam with width 1 would still differ from greedy due to expansion order; delegation
+	// keeps objective 7 with -beam 1 aligned with objective 6 for testing and reporting.
+	if (params->beamWidth <= 1)
+	{
+		buildGreedyExact();
+		return;
+	}
+
 	finalSplits = 0;
 	finalLeaves = 0;
 	finalDepth = 0;
@@ -629,7 +638,7 @@ void BornAgainDecisionTree::buildBeamExact()
 	std::vector<BeamState> beam;
 	beam.push_back(root);
 
-	const int BEAM_WIDTH = 5;
+	const int BEAM_WIDTH = params->beamWidth;
 	const int MAX_ITERS = 100000;
 	int iter = 0;
 

@@ -1,0 +1,1 @@
+PASS: greedy.tree and beam_w1.tree are identical.

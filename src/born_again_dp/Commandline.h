@@ -36,11 +36,12 @@ public:
 	int nbTrees;					// Hard limit on the number of trees (defaults to the number of trees from the input data)
 	int objectiveFunction;			// 0 = Depth ; 1 = NbLeaves ; 2 = Depth then NbLeaves ; 3 = NbLeaves then Depth (not yet implemented) ; 4 = Heuristic BA tree (with faithfulness certificate if the pre-processor flag "USING_CPLEX" is defined and CPLEX is linked) ; 5 = A* NbLeaves ; 6 = GreedyExactCells ; 7 = BeamSearchExactCells (not yet implemented)
 	int seed;						// Random seed (only impacts the heuristic)
+	int beamWidth;					// Beam width for objective 7 (default 5)
 
 	// Constructor
 	Commandline(int argc, char* argv[])
 	{
-		if (argc > 9 || argc < 2)
+		if (argc > 11 || argc < 2)
 		{
 			std::cout << "ISSUE WITH THE NUMBER OF COMMANDLINE ARGUMENTS: " << argc << std::endl;
 			command_ok = false;
@@ -54,6 +55,7 @@ public:
 			nbTrees = 10;
 			objectiveFunction = 4;
 			seed = 1;
+			beamWidth = 5;
 			for (int i = 3; i < argc; i += 2)
 			{
 				if (std::string(argv[i]) == "-trees")
@@ -62,6 +64,8 @@ public:
 					objectiveFunction = atoi(argv[i + 1]);
 				else if (std::string(argv[i]) == "-seed")
 					seed = atoi(argv[i + 1]);
+				else if (std::string(argv[i]) == "-beam")
+					beamWidth = atoi(argv[i + 1]);
 				else
 				{
 					std::cout << "----- NON RECOGNIZED ARGUMENT: " << std::string(argv[i]) << std::endl;
