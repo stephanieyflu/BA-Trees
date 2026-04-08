@@ -614,11 +614,13 @@ void BornAgainDecisionTree::buildBeamExact()
 
 		// Heuristic 1: Focus on Class Diversity (Lower Bound)
 		if (params->beamHeuristic == 1) {
+			std::cout << "DEBUG: Running Lookeahead (Diversity) Heuristic!" << std::endl; //debug statement
 			return (double)countRemainingSplitsLB(s) + (double)s.splits;
 		} 
 		
 		// Heuristic 2: Focus on Balance (Depth Penalty)
 		if (params->beamHeuristic == 2) {
+			std::cout << "DEBUG: Running Balance Heuristic!" << std::endl; //debug statement
 			// We add a heavy penalty for depth to avoid 'skinny' trees
 			return sc + (0.5 * (double)s.splits) + (2.0 * (double)getMaxTreeDepth(s));
 		}
