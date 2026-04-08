@@ -46,8 +46,14 @@ DISPLAY_LABELS = {
 }
 
 # Method order and colors (match paper: dp=blue, greedy=orange, beam=green)
-METHOD_ORDER = ["dp", "greedy", "beam"]
-METHOD_COLORS = {"dp": "#1f77b4", "greedy": "#ff7f0e", "beam": "#2ca02c"}
+METHOD_ORDER = ["dp", "greedy", "beam", "beam_lookahead", "beam_balance"]
+METHOD_COLORS = {
+    "dp": "#1f77b4", 
+    "greedy": "#ff7f0e", 
+    "beam": "#2ca02c",
+    "beam_lookahead": "#17becf", # Cyan
+    "beam_balance": "#9467bd"    # Purple
+}       
 
 # Marker per dataset for scatter plots
 DATASET_MARKERS = {
@@ -132,7 +138,7 @@ def fig2_bar_charts(df, out_path):
     # Pivot so we have dataset x method for each metric
     datasets = [d for d in DATASET_ORDER if d in agg["dataset"].values]
     x = np.arange(len(datasets))
-    width = 0.25
+    width = 0.15 # prev 0.25
 
     fig, axes = plt.subplots(1, 3, figsize=(9, 4.6), sharey=True)
 
@@ -144,7 +150,8 @@ def fig2_bar_charts(df, out_path):
             ("rf_ba_agreement", "RF-BA agreement"),
         ],
     ):
-        for i, method in enumerate(["beam", "dp", "greedy"]):
+        # for i, method in enumerate(["beam", "dp", "greedy"]):
+        for i, method in enumerate(METHOD_ORDER):
             vals = [
                 agg[(agg["dataset"] == d) & (agg["method"] == method)][metric].values
                 for d in datasets
@@ -275,7 +282,8 @@ def fig_min_leaves_for_threshold(df, out_path, threshold=0.95):
     )
 
     datasets = [d for d in DATASET_ORDER if d in df["dataset"].unique()]
-    methods = ["dp", "greedy", "beam"]
+    #methods = ["dp", "greedy", "beam"]
+    methods = METHOD_ORDER
     x = np.arange(len(datasets))
     width = 0.25
 
@@ -328,9 +336,11 @@ def fig_stability_boxplots(df, out_path):
             bp = ax.boxplot(
                 data,
                 patch_artist=True,
-                tick_labels=["dp", "greedy", "beam"],
             )
-            for patch, m in zip(bp["boxes"], ["dp", "greedy", "beam"]):
+            ax.set_xticks([1, 2, 3])
+            ax.set_xticklabels(["dp", "greedy", "beam"])
+            # for patch, m in zip(bp["boxes"], ["dp", "greedy", "beam"]):
+            for patch, m in zip(bp["boxes"], METHOD_ORDER):
                 patch.set_facecolor(METHOD_COLORS[m])
                 patch.set_alpha(0.6)
             ax.grid(True, axis="y", alpha=0.25)
@@ -464,7 +474,8 @@ def fig_failure_rate(df, out_path, threshold=0.6):
     width = 0.25
 
     fig, ax = plt.subplots(figsize=(9, 4.8))
-    for i, method in enumerate(["dp", "greedy", "beam"]):
+    # for i, method in enumerate(["dp", "greedy", "beam"]):
+    for i, method in enumerate(METHOD_ORDER):
         vals = []
         for d in datasets:
             v = rate[(rate["dataset"] == d) & (rate["method"] == method)]["fail_rate"].values
@@ -502,7 +513,8 @@ def fig_aggregate_table(df, out_path):
     )
 
     agg["dataset"] = pd.Categorical(agg["dataset"], DATASET_ORDER, ordered=True)
-    agg["method"] = pd.Categorical(agg["method"], ["beam", "dp", "greedy"], ordered=True)
+    # agg["method"] = pd.Categorical(agg["method"], ["beam", "dp", "greedy"], ordered=True)
+    agg["method"] = pd.Categorical(agg["method"], METHOD_ORDER, ordered=True)
     agg = agg.sort_values(["dataset", "method"]).reset_index(drop=True)
     agg.insert(0, "index", range(len(agg)))
 

@@ -34,6 +34,16 @@ SOFTWARE.*/
 
 #define BIG_M 100000 // Weight attributed to the depth in objective 2 (optimize weight then number of leaves)
 
+// New Beam Search Heuristic Helpers: Beam search over partial trees
+struct BeamState
+{
+	std::vector<std::pair<int, int>> regions;      // pending regions
+	std::vector<int> regionNodeIDs;                // node index in tree for each region
+	std::vector<Node> tree;                        // local tree
+	unsigned int splits;                           // number of internal nodes
+	double score;                                  // heuristic score (lower is better)
+};
+
 class BornAgainDecisionTree
 {
 private:
@@ -95,6 +105,10 @@ private:
 	void computeClassCountsRegion(int indexBottom, int indexTop, std::vector<int> & counts);
 	int greedyBuildRegion(int indexBottom, int indexTop, unsigned int currentDepth);
 
+	// Beam SearchHeuristic Helpers
+    int countRemainingSplitsLB(const BeamState & s);
+    int getMaxTreeDepth(const BeamState & s);
+
 public:
 
     // Main procedure: Building the reborn decision tree (using an exact algorithm) -- the result is guaranteed to have the smallest size and to be faithful
@@ -111,6 +125,7 @@ public:
 
 	// Exports the born-again tree in a file
 	void exportBATree(std::string fileName);
+
 
 	// Constructor
 	BornAgainDecisionTree(Params * params, RandomForest * randomForest): params(params), randomForest(randomForest), fspaceOriginal(params, randomForest), fspaceFinal(params, randomForest){};

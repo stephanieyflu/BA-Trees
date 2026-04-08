@@ -20,6 +20,7 @@ It will:
 """
 
 import csv
+import os
 import subprocess
 from pathlib import Path
 
@@ -37,9 +38,11 @@ RESULTS_ROOT = ROOT / "src" / "born_again_dp" / "results"
 
 
 METHODS = {
-    "dp": 1,       # dynamic programming, NbLeaves
-    "greedy": 6,   # GreedyExactCells
-    "beam": 7,     # BeamSearchExactCells
+    "dp": 1,          # dynamic programming, NbLeaves
+    "greedy": 6,      # GreedyExactCells
+    "beam": 7,        # BeamSearchExactCells
+    "beam_lookahead": 7, # BeamSearchExactCells with Lookahead Heuristic, bh=1
+    "beam_balance": 7, # BeamSearchExactCells with Depth Penalty Heuristic, bh=2
 }
 
 # Datasets / folds to run.
@@ -57,17 +60,27 @@ def ensure_result_dirs():
         (RESULTS_ROOT / m).mkdir(parents=True, exist_ok=True)
 
 
-def run_solver(forest_file: Path, out_prefix: Path, objective: int, max_trees: int):
+def run_solver(forest_file: Path, out_prefix: Path, method_name: str, objective: int, max_trees: int):
     out_prefix.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         str(BA_BIN),
         str(forest_file),
         str(out_prefix),
-        "-trees",
-        str(max_trees),
-        "-obj",
-        str(objective),
+        "-trees", str(max_trees),
+        "-obj", str(objective),
     ]
+    
+    # Map method name to the heuristic ID
+    if method_name == "beam_lookahead":
+        cmd += ["-bh", "1"]
+    elif method_name == "beam_balance":
+        cmd += ["-bh", "2"]
+    elif method_name == "beam":
+        cmd += ["-bh", "0"]
+
+    if os.environ.get("BA_PRINT_CMD"):
+        print("bornAgain:", " ".join(cmd), flush=True)
+
     subprocess.run(cmd, check=True)
 
 
@@ -121,10 +134,10 @@ def compute_metrics_for_run(dataset: str, fold: int, method: str):
         X_train, y_train, dataset, fold, n_trees=10, return_file=True
     )
 
-    # 3) Run solver
-    out_prefix = RESULTS_ROOT / method / f"{dataset}_fold{fold}_{method}"
-    run_solver(Path(forest_file), out_prefix, METHODS[method], MAX_TREES_PER_RUN)
-
+    # 3) Run solver 
+    out_prefix = RESULTS_ROOT / method / f"{dataset}_fold{fold}_{method}"     # Use the 'method' string (e.g., "beam_lookahead") to define the path
+    run_solver(Path(forest_file), out_prefix, method, METHODS[method], MAX_TREES_PER_RUN)  # Run the solver with the updated pathing
+    
     out_info = parse_out_file(out_prefix.with_suffix(".out"))
 
     # 4) Load BA-tree as classifier

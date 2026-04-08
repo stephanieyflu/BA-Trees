@@ -544,6 +544,35 @@ void BornAgainDecisionTree::buildGreedyExact()
 	greedyBuildRegion(0, (int)fspaceFinal.nbCells - 1, 0);
 }
 
+// --- BEAM SEARCH HEURISTIC HELPERS ---
+
+// Heuristic 1: Lookahead Lower-Bound
+int BornAgainDecisionTree::countRemainingSplitsLB(const BeamState & s) {
+    int totalLB = 0;
+    for (const auto & reg : s.regions) {
+        std::vector<int> counts(params->nbClasses, 0);
+        // Uses the existing method to count class occurrences in a region
+        computeClassCountsRegion(reg.first, reg.second, counts); 
+        
+        int uniqueClasses = 0;
+        for(int c : counts) {
+            if(c > 0) uniqueClasses++;
+        }
+        // Lower bound: if a region has C classes, it needs at least C-1 more splits
+        if (uniqueClasses > 1) totalLB += (uniqueClasses - 1);
+    }
+    return totalLB;
+}
+
+// Heuristic 2: Depth Tracker
+int BornAgainDecisionTree::getMaxTreeDepth(const BeamState & s) {
+    int maxD = 0;
+    for (const auto & node : s.tree) {
+        if (node.depth > maxD) maxD = node.depth;
+    }
+    return maxD;
+}
+
 void BornAgainDecisionTree::buildBeamExact()
 {
 	finalSplits = 0;
@@ -555,16 +584,6 @@ void BornAgainDecisionTree::buildBeamExact()
 	// Initialize the cells structures and keep useful hyperplanes
 	fspaceOriginal.initializeCells(randomForest->getHyperplanes(), false);
 	fspaceFinal.initializeCells(fspaceOriginal.exportUsefulHyperplanes(), true);
-
-	// Beam search over partial trees
-	struct BeamState
-	{
-		std::vector<std::pair<int, int>> regions;      // pending regions
-		std::vector<int> regionNodeIDs;                // node index in tree for each region
-		std::vector<Node> tree;                        // local tree
-		unsigned int splits;                           // number of internal nodes
-		double score;                                  // heuristic score (lower is better)
-	};
 
 	auto regionImpurity = [&](int indexBottom, int indexTop) -> double
 	{
@@ -585,11 +604,26 @@ void BornAgainDecisionTree::buildBeamExact()
 		return 1.0 - sumSq;
 	};
 
+	// 3 Different Beam Heuristics 
 	auto stateScore = [&](const BeamState & s) -> double
 	{
+		// Default impurity score used as a base for all heuristics
 		double sc = 0.0;
 		for (const auto & reg : s.regions)
 			sc += regionImpurity(reg.first, reg.second);
+
+		// Heuristic 1: Focus on Class Diversity (Lower Bound)
+		if (params->beamHeuristic == 1) {
+			return (double)countRemainingSplitsLB(s) + (double)s.splits;
+		} 
+		
+		// Heuristic 2: Focus on Balance (Depth Penalty)
+		if (params->beamHeuristic == 2) {
+			// We add a heavy penalty for depth to avoid 'skinny' trees
+			return sc + (0.5 * (double)s.splits) + (2.0 * (double)getMaxTreeDepth(s));
+		}
+
+		// Default: Impurity + Splits
 		return sc + (double)s.splits;
 	};
 

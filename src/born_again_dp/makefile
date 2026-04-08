@@ -2,7 +2,8 @@ all : bornAgain
 
 CCC = g++
 CCOPT = -O3
-CCFLAGS = $(CCOPT)
+# CCFLAGS = $(CCOPT)
+CCFLAGS = $(CCOPT) -std=c++11
 TARGETDIR=.
 
 OBJS2 = \
