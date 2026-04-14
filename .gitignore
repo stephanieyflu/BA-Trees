@@ -5,3 +5,4 @@ mie424-project
 docs/mie424-figs/**
 src/analysis_plots/**
 src/born_again_dp/results/**
+*.o
