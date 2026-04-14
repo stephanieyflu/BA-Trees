@@ -506,7 +506,17 @@ def fig_aggregate_table(df, out_path):
     """Render aggregate metrics table (mean over folds) as a figure image."""
     agg = (
         df.groupby(["dataset", "method"])[
-            ["depth", "leaves", "cpu_time", "rf_acc", "ba_acc", "rf_ba_agreement"]
+            [
+                "depth",
+                "leaves",
+                "cpu_time",
+                "rf_acc",
+                "ba_acc",
+                "ba_train_acc",
+                "ba_test_acc",
+                "ba_gen_gap",
+                "rf_ba_agreement",
+            ]
         ]
         .mean()
         .reset_index()
@@ -528,14 +538,17 @@ def fig_aggregate_table(df, out_path):
             "CPU Time (s)": agg["cpu_time"].map(lambda x: f"{x:.4f}"),
             "RF Acc": agg["rf_acc"].map(lambda x: f"{x:.4f}"),
             "BA Acc": agg["ba_acc"].map(lambda x: f"{x:.4f}"),
+            "Train Acc": agg["ba_train_acc"].map(lambda x: f"{x:.4f}"),
+            "Test Acc": agg["ba_test_acc"].map(lambda x: f"{x:.4f}"),
+            "Gen Gap": agg["ba_gen_gap"].map(lambda x: f"{x:.4f}"),
             "RF-BA Agreement": agg["rf_ba_agreement"].map(lambda x: f"{x:.4f}"),
         }
     )
 
-    fig, ax = plt.subplots(figsize=(16, 9))
+    fig, ax = plt.subplots(figsize=(20, 9))
     ax.axis("off")
 
-    col_widths = [0.05, 0.23, 0.09, 0.07, 0.08, 0.10, 0.08, 0.08, 0.12]
+    col_widths = [0.04, 0.20, 0.09, 0.06, 0.07, 0.08, 0.07, 0.07, 0.08, 0.08, 0.07, 0.09]
     tbl = ax.table(
         cellText=table_df.values,
         colLabels=table_df.columns,
@@ -544,7 +557,7 @@ def fig_aggregate_table(df, out_path):
         loc="center",
     )
     tbl.auto_set_font_size(False)
-    tbl.set_fontsize(11)
+    tbl.set_fontsize(10)
     tbl.scale(1.0, 1.2)
 
     # Header styling + grid
@@ -563,7 +576,7 @@ def fig_aggregate_table(df, out_path):
     metric_cols = {
         "cpu_time": (5, "min"),
         "ba_acc": (7, "max"),
-        "rf_ba_agreement": (8, "max"),
+        "rf_ba_agreement": (11, "max"),
     }
     highlight_color = "#e8f5e9"
     tol = 1e-12
@@ -579,11 +592,12 @@ def fig_aggregate_table(df, out_path):
                     cell.set_facecolor(highlight_color)
                     cell.set_text_props(weight="bold")
 
-    # Draw only one darker horizontal divider between each dataset group (every 3 rows)
+    # Draw only one darker horizontal divider between each dataset group.
     ncols = len(table_df.columns)
     left_x = tbl[1, 0].get_x()
     right_x = tbl[1, ncols - 1].get_x() + tbl[1, ncols - 1].get_width()
-    for end_row in range(3, len(table_df) + 1, 3):  # data rows are 1..N; header is 0
+    methods_per_dataset = len(METHOD_ORDER)
+    for end_row in range(methods_per_dataset, len(table_df) + 1, methods_per_dataset):
         y = tbl[end_row, 0].get_y()  # bottom of this row
         ax.plot(
             [left_x, right_x],

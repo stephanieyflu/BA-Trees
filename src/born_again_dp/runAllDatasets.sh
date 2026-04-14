@@ -1,12 +1,12 @@
 #!/bin/bash
 mkdir ../output
-for n in COMPAS-ProPublica FICO HTRU2 Pima-Diabetes Seeds Breast-Cancer-Wisconsin
+for n in COMPAS-ProPublica FICO HTRU2 Pima-Diabetes Seeds Breast-Cancer-Wisconsin CVD-1
 do
-mkdir ../output/${n}
+mkdir -p ../output/${n}
 done
 for o in {0..2}
 do
-for n in COMPAS-ProPublica FICO HTRU2 Pima-Diabetes Seeds Breast-Cancer-Wisconsin
+for n in COMPAS-ProPublica FICO HTRU2 Pima-Diabetes Seeds Breast-Cancer-Wisconsin CVD-1
 do
 for u in {1..10}
 do

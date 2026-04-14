@@ -150,13 +150,18 @@ def compute_metrics_for_run(dataset: str, fold: int, method: str):
         num_trees=1,
     )
 
-    # 5) Compute metrics on test set
-    rf_pred = rf_clf.predict(X_test)
-    ba_pred = ba_clf.predict(X_test)
+    # 5) Compute metrics on train and test sets
+    rf_pred_train = rf_clf.predict(X_train)
+    rf_pred_test = rf_clf.predict(X_test)
+    ba_pred_train = ba_clf.predict(X_train)
+    ba_pred_test = ba_clf.predict(X_test)
 
-    rf_acc = np.mean(rf_pred == y_test)
-    ba_acc = np.mean(ba_pred == y_test)
-    agreement = np.mean(rf_pred == ba_pred)
+    rf_train_acc = np.mean(rf_pred_train == y_train)
+    rf_test_acc = np.mean(rf_pred_test == y_test)
+    ba_train_acc = np.mean(ba_pred_train == y_train)
+    ba_test_acc = np.mean(ba_pred_test == y_test)
+    agreement_train = np.mean(rf_pred_train == ba_pred_train)
+    agreement_test = np.mean(rf_pred_test == ba_pred_test)
 
     row = {
         "dataset": dataset,
@@ -170,9 +175,18 @@ def compute_metrics_for_run(dataset: str, fold: int, method: str):
         "nb_cells": out_info["nb_cells"],
         "nb_subproblems": out_info["nb_subproblems"],
         "nb_recursive_calls": out_info["nb_recursive_calls"],
-        "rf_acc": rf_acc,
-        "ba_acc": ba_acc,
-        "rf_ba_agreement": agreement,
+        # Legacy columns (kept for backward compat with analysis scripts)
+        "rf_acc": rf_test_acc,
+        "ba_acc": ba_test_acc,
+        "rf_ba_agreement": agreement_test,
+        # Generalization metrics
+        "rf_train_acc": rf_train_acc,
+        "rf_test_acc": rf_test_acc,
+        "ba_train_acc": ba_train_acc,
+        "ba_test_acc": ba_test_acc,
+        "ba_gen_gap": ba_train_acc - ba_test_acc,
+        "rf_ba_agreement_train": agreement_train,
+        "rf_ba_agreement_test": agreement_test,
     }
     return row
 
@@ -204,6 +218,13 @@ def main():
         "rf_acc",
         "ba_acc",
         "rf_ba_agreement",
+        "rf_train_acc",
+        "rf_test_acc",
+        "ba_train_acc",
+        "ba_test_acc",
+        "ba_gen_gap",
+        "rf_ba_agreement_train",
+        "rf_ba_agreement_test",
     ]
 
     with summary_path.open("w", newline="") as f:
