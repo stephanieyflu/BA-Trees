@@ -20,6 +20,7 @@ It will:
 """
 
 import csv
+import os
 import subprocess
 from pathlib import Path
 
@@ -37,9 +38,11 @@ RESULTS_ROOT = ROOT / "src" / "born_again_dp" / "results"
 
 
 METHODS = {
-    "dp": 1,       # dynamic programming, NbLeaves
-    "greedy": 6,   # GreedyExactCells
-    "beam": 7,     # BeamSearchExactCells
+    "dp": 1,          # dynamic programming, NbLeaves
+    "greedy": 6,      # GreedyExactCells
+    "beam": 7,        # BeamSearchExactCells
+    "beam_lookahead": 7, # BeamSearchExactCells with Lookahead Heuristic, bh=1
+    "beam_balance": 7, # BeamSearchExactCells with Depth Penalty Heuristic, bh=2
 }
 
 # Datasets / folds to run.
@@ -57,17 +60,27 @@ def ensure_result_dirs():
         (RESULTS_ROOT / m).mkdir(parents=True, exist_ok=True)
 
 
-def run_solver(forest_file: Path, out_prefix: Path, objective: int, max_trees: int):
+def run_solver(forest_file: Path, out_prefix: Path, method_name: str, objective: int, max_trees: int):
     out_prefix.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         str(BA_BIN),
         str(forest_file),
         str(out_prefix),
-        "-trees",
-        str(max_trees),
-        "-obj",
-        str(objective),
+        "-trees", str(max_trees),
+        "-obj", str(objective),
     ]
+    
+    # Map method name to the heuristic ID
+    if method_name == "beam_lookahead":
+        cmd += ["-bh", "1"]
+    elif method_name == "beam_balance":
+        cmd += ["-bh", "2"]
+    elif method_name == "beam":
+        cmd += ["-bh", "0"]
+
+    if os.environ.get("BA_PRINT_CMD"):
+        print("bornAgain:", " ".join(cmd), flush=True)
+
     subprocess.run(cmd, check=True)
 
 
@@ -121,10 +134,10 @@ def compute_metrics_for_run(dataset: str, fold: int, method: str):
         X_train, y_train, dataset, fold, n_trees=10, return_file=True
     )
 
-    # 3) Run solver
-    out_prefix = RESULTS_ROOT / method / f"{dataset}_fold{fold}_{method}"
-    run_solver(Path(forest_file), out_prefix, METHODS[method], MAX_TREES_PER_RUN)
-
+    # 3) Run solver 
+    out_prefix = RESULTS_ROOT / method / f"{dataset}_fold{fold}_{method}"     # Use the 'method' string (e.g., "beam_lookahead") to define the path
+    run_solver(Path(forest_file), out_prefix, method, METHODS[method], MAX_TREES_PER_RUN)  # Run the solver with the updated pathing
+    
     out_info = parse_out_file(out_prefix.with_suffix(".out"))
 
     # 4) Load BA-tree as classifier
@@ -137,13 +150,18 @@ def compute_metrics_for_run(dataset: str, fold: int, method: str):
         num_trees=1,
     )
 
-    # 5) Compute metrics on test set
-    rf_pred = rf_clf.predict(X_test)
-    ba_pred = ba_clf.predict(X_test)
+    # 5) Compute metrics on train and test sets
+    rf_pred_train = rf_clf.predict(X_train)
+    rf_pred_test = rf_clf.predict(X_test)
+    ba_pred_train = ba_clf.predict(X_train)
+    ba_pred_test = ba_clf.predict(X_test)
 
-    rf_acc = np.mean(rf_pred == y_test)
-    ba_acc = np.mean(ba_pred == y_test)
-    agreement = np.mean(rf_pred == ba_pred)
+    rf_train_acc = np.mean(rf_pred_train == y_train)
+    rf_test_acc = np.mean(rf_pred_test == y_test)
+    ba_train_acc = np.mean(ba_pred_train == y_train)
+    ba_test_acc = np.mean(ba_pred_test == y_test)
+    agreement_train = np.mean(rf_pred_train == ba_pred_train)
+    agreement_test = np.mean(rf_pred_test == ba_pred_test)
 
     row = {
         "dataset": dataset,
@@ -157,9 +175,18 @@ def compute_metrics_for_run(dataset: str, fold: int, method: str):
         "nb_cells": out_info["nb_cells"],
         "nb_subproblems": out_info["nb_subproblems"],
         "nb_recursive_calls": out_info["nb_recursive_calls"],
-        "rf_acc": rf_acc,
-        "ba_acc": ba_acc,
-        "rf_ba_agreement": agreement,
+        # Legacy columns (kept for backward compat with analysis scripts)
+        "rf_acc": rf_test_acc,
+        "ba_acc": ba_test_acc,
+        "rf_ba_agreement": agreement_test,
+        # Generalization metrics
+        "rf_train_acc": rf_train_acc,
+        "rf_test_acc": rf_test_acc,
+        "ba_train_acc": ba_train_acc,
+        "ba_test_acc": ba_test_acc,
+        "ba_gen_gap": ba_train_acc - ba_test_acc,
+        "rf_ba_agreement_train": agreement_train,
+        "rf_ba_agreement_test": agreement_test,
     }
     return row
 
@@ -191,6 +218,13 @@ def main():
         "rf_acc",
         "ba_acc",
         "rf_ba_agreement",
+        "rf_train_acc",
+        "rf_test_acc",
+        "ba_train_acc",
+        "ba_test_acc",
+        "ba_gen_gap",
+        "rf_ba_agreement_train",
+        "rf_ba_agreement_test",
     ]
 
     with summary_path.open("w", newline="") as f:

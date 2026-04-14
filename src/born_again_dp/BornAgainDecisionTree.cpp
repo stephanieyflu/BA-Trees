@@ -544,6 +544,35 @@ void BornAgainDecisionTree::buildGreedyExact()
 	greedyBuildRegion(0, (int)fspaceFinal.nbCells - 1, 0);
 }
 
+// --- BEAM SEARCH HEURISTIC HELPERS ---
+
+// Heuristic 1: Lookahead Lower-Bound
+int BornAgainDecisionTree::countRemainingSplitsLB(const BeamState & s) {
+    int totalLB = 0;
+    for (const auto & reg : s.regions) {
+        std::vector<int> counts(params->nbClasses, 0);
+        // Uses the existing method to count class occurrences in a region
+        computeClassCountsRegion(reg.first, reg.second, counts); 
+        
+        int uniqueClasses = 0;
+        for(int c : counts) {
+            if(c > 0) uniqueClasses++;
+        }
+        // Lower bound: if a region has C classes, it needs at least C-1 more splits
+        if (uniqueClasses > 1) totalLB += (uniqueClasses - 1);
+    }
+    return totalLB;
+}
+
+// Heuristic 2: Depth Tracker
+int BornAgainDecisionTree::getMaxTreeDepth(const BeamState & s) {
+    int maxD = 0;
+    for (const auto & node : s.tree) {
+        if (node.depth > maxD) maxD = node.depth;
+    }
+    return maxD;
+}
+
 void BornAgainDecisionTree::buildBeamExact()
 {
 	// Beam width <= 1: delegate to greedy (depth-first best split on exact cells). A naive
@@ -565,41 +594,55 @@ void BornAgainDecisionTree::buildBeamExact()
 	fspaceOriginal.initializeCells(randomForest->getHyperplanes(), false);
 	fspaceFinal.initializeCells(fspaceOriginal.exportUsefulHyperplanes(), true);
 
-	// Beam search over partial trees
-	struct BeamState
-	{
-		std::vector<std::pair<int, int>> regions;      // pending regions
-		std::vector<int> regionNodeIDs;                // node index in tree for each region
-		std::vector<Node> tree;                        // local tree
-		unsigned int splits;                           // number of internal nodes
-		double score;                                  // heuristic score (lower is better)
-	};
-
 	auto regionImpurity = [&](int indexBottom, int indexTop) -> double
 	{
-		std::vector<int> counts(params->nbClasses, 0);
-		computeClassCountsRegion(indexBottom, indexTop, counts);
-		int total = 0;
-		for (int c = 0; c < params->nbClasses; c++) total += counts[c];
-		if (total == 0) return 0.0;
-		double sumSq = 0.0;
-		for (int c = 0; c < params->nbClasses; c++)
-		{
-			if (counts[c] > 0)
-			{
-				double p = (double)counts[c] / (double)total;
-				sumSq += p * p;
-			}
-		}
-		return 1.0 - sumSq;
+    std::vector<int> counts(params->nbClasses, 0);
+    computeClassCountsRegion(indexBottom, indexTop, counts);
+    int total = 0;
+    for (int c = 0; c < params->nbClasses; c++) total += counts[c];
+    if (total == 0) return 0.0;
+    
+    double sumSq = 0.0;
+    for (int c = 0; c < params->nbClasses; c++)
+    {
+        if (counts[c] > 0)
+        {
+            double p = (double)counts[c] / (double)total;
+            sumSq += p * p;
+        }
+    }
+    // FIX: Weight the impurity by the number of elements in the region
+    return (double)total * (1.0 - sumSq); 
 	};
 
 	auto stateScore = [&](const BeamState & s) -> double
 	{
-		double sc = 0.0;
-		for (const auto & reg : s.regions)
-			sc += regionImpurity(reg.first, reg.second);
-		return sc + (double)s.splits;
+    // Calculate total weighted impurity
+    double sc = 0.0;
+    for (const auto & reg : s.regions)
+        sc += regionImpurity(reg.first, reg.second);
+
+    // FIX: Dynamically scale the penalty based on the dataset size.
+    // We fetch the total cells in the feature space so the penalty scales up 
+    // automatically for larger datasets like CVD-1.
+    double totalCells = (double)fspaceOriginal.nbCells;
+    
+    // A multiplier of 0.05 to 0.1 usually works well to balance the scales,
+    // but you can tweak this base factor.
+    double dynamicPenalty = totalCells * 0.05; 
+
+    // Heuristic 1: Focus on Class Diversity + Lookahead
+    if (params->beamHeuristic == 1) {
+        return sc + dynamicPenalty * ((double)countRemainingSplitsLB(s) + (double)s.splits);
+    } 
+    
+    // Heuristic 2: Focus on Balance (Depth Penalty)
+    if (params->beamHeuristic == 2) {
+        return sc + (dynamicPenalty * 0.5 * (double)s.splits) + (dynamicPenalty * 2.0 * (double)getMaxTreeDepth(s));
+    }
+
+    // Default: Impurity + Splits
+    return sc + dynamicPenalty * (double)s.splits;
 	};
 
 	// Initialize beam with a single root leaf covering the whole space
@@ -668,20 +711,42 @@ void BornAgainDecisionTree::buildBeamExact()
 
 		for (const auto & s : beam)
 		{
-			// Find the most impure region in this state
+			// Find the best region to expand (heuristic-dependent)
 			int bestRegionIdx = -1;
-			double worstImp = 0.0;
+			double bestRegionScore = -1.0;
 			for (int i = 0; i < (int)s.regions.size(); i++)
 			{
 				double imp = regionImpurity(s.regions[i].first, s.regions[i].second);
-				if (imp > worstImp)
+				if (imp == 0.0) continue;
+
+				double regionScore = imp;
+
+				if (params->beamHeuristic == 1)
 				{
-					worstImp = imp;
+					// Lookahead: prioritize regions with more distinct classes,
+					// since they will need more future splits to resolve.
+					std::vector<int> counts(params->nbClasses, 0);
+					computeClassCountsRegion(s.regions[i].first, s.regions[i].second, counts);
+					int uniqueClasses = 0;
+					for (int c = 0; c < params->nbClasses; c++)
+						if (counts[c] > 0) uniqueClasses++;
+					regionScore = imp * uniqueClasses;
+				}
+				else if (params->beamHeuristic == 2)
+				{
+					// Balance: prioritize shallow regions so the tree grows evenly.
+					int nodeDepth = s.tree[s.regionNodeIDs[i]].depth;
+					regionScore = imp / (1.0 + (double)nodeDepth);
+				}
+
+				if (regionScore > bestRegionScore)
+				{
+					bestRegionScore = regionScore;
 					bestRegionIdx = i;
 				}
 			}
 
-			if (bestRegionIdx == -1 || worstImp == 0.0)
+			if (bestRegionIdx == -1 || bestRegionScore <= 0.0)
 			{
 				// Nothing to expand in this state
 				newBeam.push_back(s);
@@ -772,10 +837,28 @@ void BornAgainDecisionTree::buildBeamExact()
 				continue;
 			}
 
+			// Balance heuristic: penalize lopsided splits so the tree grows evenly.
+			// A 50/50 split keeps its Gini score; a 99/1 split gets nearly doubled.
+			if (params->beamHeuristic == 2)
+			{
+				for (auto & cnd : candidates)
+				{
+					int leftTotal = 0, rightTotal = 0;
+					for (int c = 0; c < params->nbClasses; c++)
+					{
+						leftTotal += cnd.leftCounts[c];
+						rightTotal += cnd.rightCounts[c];
+					}
+					double balance = 1.0 - std::abs((double)leftTotal - (double)rightTotal)
+					                           / (double)(leftTotal + rightTotal);
+					cnd.score = cnd.score * (2.0 - balance);
+				}
+			}
+
 			std::sort(candidates.begin(), candidates.end(),
 			          [](const Cand & a, const Cand & b) { return a.score < b.score; });
 
-			int maxChildren = std::min((int)candidates.size(), 3); // expand top 3 splits per state
+			int maxChildren = std::min((int)candidates.size(), 3);
 
 			for (int ci = 0; ci < maxChildren; ci++)
 			{
@@ -783,13 +866,13 @@ void BornAgainDecisionTree::buildBeamExact()
 				BeamState child = s;
 				child.splits++;
 
-				// Turn parent node into internal node
-				Node & parent = child.tree[parentNodeID];
-				parent.nodeType = Node::NODE_INTERNAL;
-				parent.splitFeature = cnd.feature;
-				parent.splitValue = fspaceFinal.orderedHyperplaneLevels[cnd.feature][cnd.level];
+				// Turn parent node into internal node (use index, not reference,
+				// because push_back below can reallocate and invalidate references)
+				child.tree[parentNodeID].nodeType = Node::NODE_INTERNAL;
+				child.tree[parentNodeID].splitFeature = cnd.feature;
+				child.tree[parentNodeID].splitValue = fspaceFinal.orderedHyperplaneLevels[cnd.feature][cnd.level];
 
-				int parentDepth = parent.depth;
+				int parentDepth = child.tree[parentNodeID].depth;
 
 				// Left child
 				child.tree.push_back(Node());
@@ -829,8 +912,9 @@ void BornAgainDecisionTree::buildBeamExact()
 				child.tree[rightID].nodeID = rightID;
 				child.tree[rightID].depth = parentDepth + 1;
 
-				parent.leftChild = leftID;
-				parent.rightChild = rightID;
+				// Set children AFTER push_backs, using index-based access
+				child.tree[parentNodeID].leftChild = leftID;
+				child.tree[parentNodeID].rightChild = rightID;
 
 				// Update regions
 				child.regions.erase(child.regions.begin() + bestRegionIdx);

@@ -13,8 +13,16 @@ int main(int argc, char** argv)
 		{
 			/* READING INPUT RANDOM FOREST */
 			std::cout << "----- READING RANDOM FOREST from " << c.instance_name << std::endl;
+<<<<<<< HEAD
 			Params params(inputFile, c.nbTrees, c.objectiveFunction,c.seed);
 			params.beamWidth = c.beamWidth;
+=======
+			Params params(inputFile, c.nbTrees, c.objectiveFunction, c.seed, c.beam_heuristic);
+			if (c.objectiveFunction == 7)
+				std::cout << "----- BEAM HEURISTIC (-bh): " << params.beamHeuristic
+				          << " (0=default, 1=lookahead, 2=depth-penalty)" << std::endl;
+
+>>>>>>> bz_dev
 			RandomForest randomForest(&params, inputFile);
 
 			/* CONSTRUCTING THE BORN-AGAIN TREE */
@@ -34,16 +42,20 @@ int main(int argc, char** argv)
 			bornAgainTree.displayRunStatistics();
 			bornAgainTree.exportRunStatistics(c.output_name + ".out");
 			bornAgainTree.exportBATree(c.output_name + ".tree");
+			std::cout << "----- END OF ALGORITHM " << std::endl << std::endl;
+			return 0;
 		}
 		else
 		{
 			std::cout << "----- IMPOSSIBLE TO READ RANDOM FOREST from: " << c.instance_name << std::endl;
+			std::cout << "----- END OF ALGORITHM " << std::endl << std::endl;
+			return 1;
 		}
 	}
 	else
 	{
 		std::cout << "----- INCORRECT COMMANDLINE " << std::endl;
+		std::cout << "----- END OF ALGORITHM " << std::endl << std::endl;
+		return 1;
 	}
-	std::cout << "----- END OF ALGORITHM " << std::endl << std::endl;
-	return 0;
 }

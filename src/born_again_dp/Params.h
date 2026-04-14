@@ -46,6 +46,7 @@ public:
 	std::default_random_engine generator;	// Random number generator engine
 	clock_t startTime;						// Time when the algorithm started (CPU time excluding I/O)
 	clock_t stopTime;						// Time when the algorithm stopped (CPU time excluding I/O)
+	int beamHeuristic; 					// Beam Search heuristic selection --> 0: Default, 1: Lookahead, 2: Depth-Penalized
 
 	/* DATASET INFORMATION */
 	std::string datasetName;		// Name of the dataset
@@ -56,7 +57,8 @@ public:
 	int nbTrees;					// Number of trees in the random forest
 	
 	/* CONSTRUCTOR -- Reading main problem parameters from the input file */
-	Params(std::ifstream & inputFile, int nbTrees, int objectiveFunction, int seed) : nbTrees(nbTrees), objectiveFunction(objectiveFunction), seed(seed)
+	Params(std::ifstream & inputFile, int nbTrees, int objectiveFunction, int seed, int beamHeuristicIn = 0)
+		: nbTrees(nbTrees), objectiveFunction(objectiveFunction), seed(seed), beamHeuristic(beamHeuristicIn)
 	{
 		beamWidth = 5;
 		nbCellsSampled = 1000; // Currently setting manually the number of manufactured samples and seed

@@ -46,8 +46,14 @@ DISPLAY_LABELS = {
 }
 
 # Method order and colors (match paper: dp=blue, greedy=orange, beam=green)
-METHOD_ORDER = ["dp", "greedy", "beam"]
-METHOD_COLORS = {"dp": "#1f77b4", "greedy": "#ff7f0e", "beam": "#2ca02c"}
+METHOD_ORDER = ["dp", "greedy", "beam", "beam_lookahead", "beam_balance"]
+METHOD_COLORS = {
+    "dp": "#1f77b4", 
+    "greedy": "#ff7f0e", 
+    "beam": "#2ca02c",
+    "beam_lookahead": "#17becf", # Cyan
+    "beam_balance": "#9467bd"    # Purple
+}       
 
 # Marker per dataset for scatter plots
 DATASET_MARKERS = {
@@ -132,7 +138,7 @@ def fig2_bar_charts(df, out_path):
     # Pivot so we have dataset x method for each metric
     datasets = [d for d in DATASET_ORDER if d in agg["dataset"].values]
     x = np.arange(len(datasets))
-    width = 0.25
+    width = 0.15 # prev 0.25
 
     fig, axes = plt.subplots(1, 3, figsize=(9, 4.6), sharey=True)
 
@@ -144,7 +150,8 @@ def fig2_bar_charts(df, out_path):
             ("rf_ba_agreement", "RF-BA agreement"),
         ],
     ):
-        for i, method in enumerate(["beam", "dp", "greedy"]):
+        # for i, method in enumerate(["beam", "dp", "greedy"]):
+        for i, method in enumerate(METHOD_ORDER):
             vals = [
                 agg[(agg["dataset"] == d) & (agg["method"] == method)][metric].values
                 for d in datasets
@@ -275,7 +282,8 @@ def fig_min_leaves_for_threshold(df, out_path, threshold=0.95):
     )
 
     datasets = [d for d in DATASET_ORDER if d in df["dataset"].unique()]
-    methods = ["dp", "greedy", "beam"]
+    #methods = ["dp", "greedy", "beam"]
+    methods = METHOD_ORDER
     x = np.arange(len(datasets))
     width = 0.25
 
@@ -328,9 +336,11 @@ def fig_stability_boxplots(df, out_path):
             bp = ax.boxplot(
                 data,
                 patch_artist=True,
-                tick_labels=["dp", "greedy", "beam"],
             )
-            for patch, m in zip(bp["boxes"], ["dp", "greedy", "beam"]):
+            ax.set_xticks([1, 2, 3])
+            ax.set_xticklabels(["dp", "greedy", "beam"])
+            # for patch, m in zip(bp["boxes"], ["dp", "greedy", "beam"]):
+            for patch, m in zip(bp["boxes"], METHOD_ORDER):
                 patch.set_facecolor(METHOD_COLORS[m])
                 patch.set_alpha(0.6)
             ax.grid(True, axis="y", alpha=0.25)
@@ -464,7 +474,8 @@ def fig_failure_rate(df, out_path, threshold=0.6):
     width = 0.25
 
     fig, ax = plt.subplots(figsize=(9, 4.8))
-    for i, method in enumerate(["dp", "greedy", "beam"]):
+    # for i, method in enumerate(["dp", "greedy", "beam"]):
+    for i, method in enumerate(METHOD_ORDER):
         vals = []
         for d in datasets:
             v = rate[(rate["dataset"] == d) & (rate["method"] == method)]["fail_rate"].values
@@ -495,14 +506,25 @@ def fig_aggregate_table(df, out_path):
     """Render aggregate metrics table (mean over folds) as a figure image."""
     agg = (
         df.groupby(["dataset", "method"])[
-            ["depth", "leaves", "cpu_time", "rf_acc", "ba_acc", "rf_ba_agreement"]
+            [
+                "depth",
+                "leaves",
+                "cpu_time",
+                "rf_acc",
+                "ba_acc",
+                "ba_train_acc",
+                "ba_test_acc",
+                "ba_gen_gap",
+                "rf_ba_agreement",
+            ]
         ]
         .mean()
         .reset_index()
     )
 
     agg["dataset"] = pd.Categorical(agg["dataset"], DATASET_ORDER, ordered=True)
-    agg["method"] = pd.Categorical(agg["method"], ["beam", "dp", "greedy"], ordered=True)
+    # agg["method"] = pd.Categorical(agg["method"], ["beam", "dp", "greedy"], ordered=True)
+    agg["method"] = pd.Categorical(agg["method"], METHOD_ORDER, ordered=True)
     agg = agg.sort_values(["dataset", "method"]).reset_index(drop=True)
     agg.insert(0, "index", range(len(agg)))
 
@@ -516,14 +538,17 @@ def fig_aggregate_table(df, out_path):
             "CPU Time (s)": agg["cpu_time"].map(lambda x: f"{x:.4f}"),
             "RF Acc": agg["rf_acc"].map(lambda x: f"{x:.4f}"),
             "BA Acc": agg["ba_acc"].map(lambda x: f"{x:.4f}"),
+            "Train Acc": agg["ba_train_acc"].map(lambda x: f"{x:.4f}"),
+            "Test Acc": agg["ba_test_acc"].map(lambda x: f"{x:.4f}"),
+            "Gen Gap": agg["ba_gen_gap"].map(lambda x: f"{x:.4f}"),
             "RF-BA Agreement": agg["rf_ba_agreement"].map(lambda x: f"{x:.4f}"),
         }
     )
 
-    fig, ax = plt.subplots(figsize=(16, 9))
+    fig, ax = plt.subplots(figsize=(20, 9))
     ax.axis("off")
 
-    col_widths = [0.05, 0.23, 0.09, 0.07, 0.08, 0.10, 0.08, 0.08, 0.12]
+    col_widths = [0.04, 0.20, 0.09, 0.06, 0.07, 0.08, 0.07, 0.07, 0.08, 0.08, 0.07, 0.09]
     tbl = ax.table(
         cellText=table_df.values,
         colLabels=table_df.columns,
@@ -532,7 +557,7 @@ def fig_aggregate_table(df, out_path):
         loc="center",
     )
     tbl.auto_set_font_size(False)
-    tbl.set_fontsize(11)
+    tbl.set_fontsize(10)
     tbl.scale(1.0, 1.2)
 
     # Header styling + grid
@@ -551,7 +576,7 @@ def fig_aggregate_table(df, out_path):
     metric_cols = {
         "cpu_time": (5, "min"),
         "ba_acc": (7, "max"),
-        "rf_ba_agreement": (8, "max"),
+        "rf_ba_agreement": (11, "max"),
     }
     highlight_color = "#e8f5e9"
     tol = 1e-12
@@ -567,11 +592,12 @@ def fig_aggregate_table(df, out_path):
                     cell.set_facecolor(highlight_color)
                     cell.set_text_props(weight="bold")
 
-    # Draw only one darker horizontal divider between each dataset group (every 3 rows)
+    # Draw only one darker horizontal divider between each dataset group.
     ncols = len(table_df.columns)
     left_x = tbl[1, 0].get_x()
     right_x = tbl[1, ncols - 1].get_x() + tbl[1, ncols - 1].get_width()
-    for end_row in range(3, len(table_df) + 1, 3):  # data rows are 1..N; header is 0
+    methods_per_dataset = len(METHOD_ORDER)
+    for end_row in range(methods_per_dataset, len(table_df) + 1, methods_per_dataset):
         y = tbl[end_row, 0].get_y()  # bottom of this row
         ax.plot(
             [left_x, right_x],
