@@ -13,16 +13,12 @@ int main(int argc, char** argv)
 		{
 			/* READING INPUT RANDOM FOREST */
 			std::cout << "----- READING RANDOM FOREST from " << c.instance_name << std::endl;
-<<<<<<< HEAD
-			Params params(inputFile, c.nbTrees, c.objectiveFunction,c.seed);
+			Params params(inputFile, c.nbTrees, c.objectiveFunction, c.seed, c.beamHeuristic);
 			params.beamWidth = c.beamWidth;
-=======
-			Params params(inputFile, c.nbTrees, c.objectiveFunction, c.seed, c.beam_heuristic);
 			if (c.objectiveFunction == 7)
-				std::cout << "----- BEAM HEURISTIC (-bh): " << params.beamHeuristic
-				          << " (0=default, 1=lookahead, 2=depth-penalty)" << std::endl;
-
->>>>>>> bz_dev
+				std::cout << "----- BEAM: width=" << params.beamWidth
+				          << ", heuristic -bh=" << params.beamHeuristic
+				          << " (0=default, 1=lookahead, 2=balance)" << std::endl;
 			RandomForest randomForest(&params, inputFile);
 
 			/* CONSTRUCTING THE BORN-AGAIN TREE */

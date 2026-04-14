@@ -25,7 +25,8 @@ src<br>      |-------born_again_dp<br>     |-------resources<br>
 
 #### src\born_again_dp:
 
-* This folder contains the C++ implementation of the optimal and heuristic BA-Tree algorithms.
+* This folder contains the C++ implementation of the optimal and heuristic BA-Tree algorithms (including greedy and beam extensions; see **README_GREEDY_BEAM.md** at the repo root).
+* **Python batch experiments:** from the repo root, with a built `bornAgain` / `bornAgain.exe` in this folder, run `python src/run_experiments.py` (writes `src/born_again_dp/results/summary.csv`). Use `python src/run_cvd1_experiments.py` to refresh only the CVD-1 rows in that summary.
 * This folder also contains a bash script (runAllDatasets.sh) which can be executed to run the algorithm on all datasets, folds, for all objective functions, and considering a different number of trees as input. The results of this script are stored in the folder src\output. Due to the number of datasets and tests, this experiment requires some CPU time (approximately 24h).
 
 #### src\resources
@@ -52,9 +53,11 @@ After compilation, the executable can be directly run on any input file represen
 Usage:
    ./bornAgain input_ensemble_path output_BAtree_path [list of options]
 Available options:
-  -obj X	       Objective used in the algorithm: 0 = Depth ; 1 = NbLeaves ; 2 = Depth then NbLeaves ; 4 = Heuristic BA-Tree (defaults to 4)
-  -trees X      Limits the number of trees read by the algorithm from the input file (X in 3 to 10, defaults to 10)
-  -seed X       Defines the random seed (defaults to 1)
+  -obj X	       Objective: 0 = Depth ; 1 = NbLeaves ; 2 = Depth then NbLeaves ; 4 = Heuristic BA-Tree ; 5 = A* (splits) ; 6 = GreedyExactCells ; 7 = BeamSearchExactCells (defaults to 4)
+  -trees X      Limits the number of trees read from the input file (defaults to 10)
+  -seed X       Random seed (defaults to 1; affects sampling-based heuristic -obj 4)
+  -beam X       Beam width for -obj 7 only (defaults to 5; values ≤ 1 use greedy construction)
+  -bh X         Beam heuristic for -obj 7: 0 = default, 1 = lookahead-style region priority, 2 = balance / depth-aware (see README_GREEDY_BEAM.md)
 ```
 Examples: <br>
 `./bornAgain ../resources/forests/FICO/FICO.RF1.txt my_output_file`<br>

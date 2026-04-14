@@ -21,6 +21,11 @@ from run_experiments import (
 DATASET = "CVD-1"
 
 
+def _complete_row(row: dict, fieldnames: list) -> dict:
+    """Fill missing columns (e.g. after extending the schema) for DictWriter."""
+    return {k: row.get(k, "") for k in fieldnames}
+
+
 def main():
     if not BA_BIN.exists():
         raise SystemExit(f"bornAgain binary not found at {BA_BIN}. Build it with `make` in src/born_again_dp.")
@@ -43,6 +48,13 @@ def main():
         "rf_acc",
         "ba_acc",
         "rf_ba_agreement",
+        "rf_train_acc",
+        "rf_test_acc",
+        "ba_train_acc",
+        "ba_test_acc",
+        "ba_gen_gap",
+        "rf_ba_agreement_train",
+        "rf_ba_agreement_test",
     ]
 
     # Load existing rows if present, and remove old CVD-1 rows so reruns stay clean.
@@ -66,7 +78,7 @@ def main():
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for row in all_rows:
-            writer.writerow(row)
+            writer.writerow(_complete_row(row, fieldnames))
 
     print(f"\nUpdated summary written to {summary_path}")
     print(f"Added/updated {len(new_rows)} rows for {DATASET}.")

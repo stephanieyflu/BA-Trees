@@ -105,9 +105,9 @@ private:
 	void computeClassCountsRegion(int indexBottom, int indexTop, std::vector<int> & counts);
 	int greedyBuildRegion(int indexBottom, int indexTop, unsigned int currentDepth);
 
-	// Beam SearchHeuristic Helpers
-    int countRemainingSplitsLB(const BeamState & s);
-    int getMaxTreeDepth(const BeamState & s);
+	// Beam-search heuristic helpers (see README_GREEDY_BEAM.md)
+	int countRemainingSplitsLB(const BeamState & s);
+	int getMaxTreeDepth(const BeamState & s);
 
 public:
 

@@ -34,23 +34,15 @@ public:
 	std::string output_name;		// Output path
 	bool command_ok;				// Boolean to check if the command line is valid
 	int nbTrees;					// Hard limit on the number of trees (defaults to the number of trees from the input data)
-	int objectiveFunction;			// 0 = Depth ; 1 = NbLeaves ; 2 = Depth then NbLeaves ; 3 = NbLeaves then Depth (not yet implemented) ; 4 = Heuristic BA tree (with faithfulness certificate if the pre-processor flag "USING_CPLEX" is defined and CPLEX is linked) ; 5 = A* NbLeaves ; 6 = GreedyExactCells ; 7 = BeamSearchExactCells (not yet implemented)
-	int seed;						// Random seed (only impacts the heuristic)
-<<<<<<< HEAD
-	int beamWidth;					// Beam width for objective 7 (default 5)
-=======
-	int beam_heuristic = 0; 		// Declare the variable for beam heuristic (default to 0)
->>>>>>> bz_dev
+	int objectiveFunction;			// 0 = Depth ; 1 = NbLeaves ; 2 = Depth then NbLeaves ; 3 = NbLeaves then Depth (not implemented) ; 4 = Heuristic ; 5 = A* NbLeaves ; 6 = GreedyExactCells ; 7 = BeamSearchExactCells
+	int seed;						// Random seed (only impacts the heuristic / sampling-based -obj 4 path)
+	int beamWidth;					// Beam width for objective 7 (default 5); values <= 1 delegate to greedy construction
+	int beamHeuristic;				// For objective 7: 0 = default region/split scoring ; 1 = lookahead-style region priority ; 2 = balance / depth-aware (see README_GREEDY_BEAM.md)
 
-	// Constructor
 	// argv[0]=program, argv[1]=instance, argv[2]=output, then optional flag/value pairs.
-	Commandline(int argc, char* argv[])
+	Commandline(int argc, char** argv)
 	{
-<<<<<<< HEAD
-		if (argc > 11 || argc < 2)
-=======
 		if (argc < 3 || (argc - 3) % 2 != 0)
->>>>>>> bz_dev
 		{
 			std::cout << "ISSUE WITH THE NUMBER OF COMMANDLINE ARGUMENTS: " << argc
 			          << " (expected: program instance output [flag value]...)" << std::endl;
@@ -58,18 +50,14 @@ public:
 		}
 		else
 		{
-			// Default parameter values
 			command_ok = true;
 			instance_name = std::string(argv[1]);
 			output_name = std::string(argv[2]);
 			nbTrees = 10;
 			objectiveFunction = 4;
 			seed = 1;
-<<<<<<< HEAD
 			beamWidth = 5;
-=======
-			beam_heuristic = 0;
->>>>>>> bz_dev
+			beamHeuristic = 0;
 			for (int i = 3; i < argc; i += 2)
 			{
 				if (i + 1 >= argc)
@@ -84,13 +72,10 @@ public:
 					objectiveFunction = atoi(argv[i + 1]);
 				else if (std::string(argv[i]) == "-seed")
 					seed = atoi(argv[i + 1]);
-<<<<<<< HEAD
 				else if (std::string(argv[i]) == "-beam")
 					beamWidth = atoi(argv[i + 1]);
-=======
 				else if (std::string(argv[i]) == "-bh")
-					beam_heuristic = atoi(argv[i + 1]);
->>>>>>> bz_dev
+					beamHeuristic = atoi(argv[i + 1]);
 				else
 				{
 					std::cout << "----- NON RECOGNIZED ARGUMENT: " << std::string(argv[i]) << std::endl;

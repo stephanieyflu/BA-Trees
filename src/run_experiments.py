@@ -1,22 +1,18 @@
 """
-Run BA-tree experiments (DP, Greedy, Beam) on all datasets/folds and
-summarize results including agreement with the original random forest.
+Run BA-tree experiments on all datasets/folds and summarize results.
 
-This script assumes:
-  - The C++ binary `born_again_dp/bornAgain` has been built (via `make`).
-  - The Python environment satisfies `docs/requirements.txt`.
+Methods (see README_GREEDY_BEAM.md for algorithm details):
+  - dp:            -obj 1  (optimal DP, leaf/split objective)
+  - greedy:        -obj 6 (GreedyExactCells, Gini on cells)
+  - beam:          -obj 7  -bh 0  (beam, default region/split heuristics)
+  - beam_lookahead:-obj 7  -bh 1
+  - beam_balance:  -obj 7  -bh 2
 
-It will:
-  1. Loop over all datasets and folds.
-  2. Run bornAgain with objectives:
-       - 1 = NbLeaves (DP, optimal),
-       - 6 = GreedyExactCells,
-       - 7 = BeamSearchExactCells.
-  3. Parse the `.out` files and compute:
-       - RF accuracy on test set,
-       - BA-tree accuracy on test set,
-       - RF–BA agreement (%) on test set.
-  4. Write a CSV summary to `src/born_again_dp/results/summary.csv`.
+Requires:
+  - C++ binary `born_again_dp/bornAgain` or `bornAgain.exe` (build via `make` / MinGW).
+  - Python deps from `docs/requirements.txt`.
+
+Writes `src/born_again_dp/results/summary.csv`.
 """
 
 import csv
@@ -33,7 +29,19 @@ import persistence
 
 
 ROOT = Path(__file__).resolve().parent.parent
-BA_BIN = ROOT / "src" / "born_again_dp" / "bornAgain"
+_BA_DIR = ROOT / "src" / "born_again_dp"
+
+
+def _resolve_bornagain_binary() -> Path:
+    """Prefer `bornAgain`, then `bornAgain.exe` (typical MinGW on Windows)."""
+    for name in ("bornAgain", "bornAgain.exe"):
+        p = _BA_DIR / name
+        if p.is_file():
+            return p
+    return _BA_DIR / "bornAgain"
+
+
+BA_BIN = _resolve_bornagain_binary()
 RESULTS_ROOT = ROOT / "src" / "born_again_dp" / "results"
 
 
@@ -53,6 +61,9 @@ FOLDS = list(range(1, 11))
 # To keep runtimes manageable across all datasets, we limit the number of trees
 # read by the C++ solver. You can increase this (up to 10) if your machine can handle it.
 MAX_TREES_PER_RUN = 4
+
+# Beam width for all `-obj 7` runs (CLI `-beam`; default in C++ is 5).
+BEAM_WIDTH = 5
 
 
 def ensure_result_dirs():
@@ -77,6 +88,9 @@ def run_solver(forest_file: Path, out_prefix: Path, method_name: str, objective:
         cmd += ["-bh", "2"]
     elif method_name == "beam":
         cmd += ["-bh", "0"]
+
+    if objective == 7:
+        cmd += ["-beam", str(BEAM_WIDTH)]
 
     if os.environ.get("BA_PRINT_CMD"):
         print("bornAgain:", " ".join(cmd), flush=True)

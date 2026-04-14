@@ -2,10 +2,10 @@
 
 This document describes an extension of the BA-Trees codebase with **alternative tree builders** that trade optimality for speed and simplicity. The goal is to compare:
 
-- The **exact dynamic-programming (DP)** solver (objectives 0–2),
+- The **exact dynamic-programming (DP)** solver (objectives 0–2 and 5 in the original code),
 - Against **approximate but fast builders**:
-  - `GreedyExactCells` (objective 6),
-  - `BeamSearchExactCells` (objective 7, planned / optional).
+  - `GreedyExactCells` (objective **6**),
+  - `BeamSearchExactCells` (objective **7**).
 
 These builders are useful when DP becomes too slow on larger instances and as a way to study how much tree size and faithfulness can be sacrificed for speed.
 
@@ -21,9 +21,9 @@ We introduce two new objective codes:
   - Produces a faithful tree on the discretized cell grid but is not guaranteed to be globally optimal in size.
 
 - **7 = BeamSearchExactCells**
-  - Beam search over partial trees with a fixed beam width \(B\) (CLI: **`-beam B`**, default \(B=5\)).
-  - Keeps the best \(B\) partial trees at each depth according to a score (e.g., impurity + splits used).
-  - For \(B\le 1\) the implementation delegates to greedy so results match objective~6 (see sanity check below).
+  - Beam search over partial trees with beam width \(B\) (CLI: **`-beam B`**, stored in `Params::beamWidth`, default \(B=5\)).
+  - States are ranked by a score combining **total weighted Gini impurity** over pending regions and a **penalty on the number of splits** (scale depends on dataset size via `fspaceOriginal.nbCells`). Optional modes **`-bh 1`** and **`-bh 2`** change region prioritization and (for `-bh 2`) split ranking; see §5 below.
+  - For \(B\le 1\) the implementation **delegates to `buildGreedyExact()`** so `-obj 7 -beam 1` matches greedy construction (see sanity check).
 
 These are added to:
 
@@ -87,14 +87,7 @@ For a region `(indexBottom, indexTop)`:
    - Start with `k = 0` and `keyPrefix = 0`.
    - At the base case (`k == nbFeatures`), each reachable `keyPrefix` is a cell index in the region.
 
-3. Use the class counts to compute impurity:
-   - **Gini**:
-
-     \[
-     G = 1 - \sum_c \left(\frac{n_c}{N}\right)^2
-     \]
-
-   - Or **entropy**, if desired.
+3. Use the class counts to compute impurity. **Greedy and beam builders use Gini** in the C++ implementation. (The legacy **`-obj 4`** heuristic path uses **entropy** on manufactured samples, not the code in §3–§5 here.)
 
 For a candidate split `(feature k, level l)`, we:
 
@@ -164,40 +157,30 @@ This yields a **single greedy BA-tree** that is faithful on the discretized cell
 
 ### 5. BeamSearchExactCells (objective 7)
 
-Beam search is implemented as a search over **partial trees** with a fixed beam width \(B\) (currently `BEAM_WIDTH = 5` in `buildBeamExact`).
+Beam search runs over **partial trees** with beam width **`Params::beamWidth`** (CLI **`-beam`**, default 5).
 
-- A **state** (`BeamState` in `BornAgainDecisionTree.cpp`) contains:
-  - A list of pending regions `(indexBottom, indexTop)`,
-  - A mapping from each pending region to a node ID in the state’s local `tree`,
-  - A local `std::vector<Node>` representing the partial BA-tree,
-  - The number of splits so far and a heuristic score.
-- The **score** is:
-  - The sum of Gini impurities of all pending regions (using `computeClassCountsRegion`),
-  - Plus the number of splits, so the beam prefers purer trees with fewer splits.
+- A **state** (`BeamState` in `BornAgainDecisionTree.h`) contains pending regions, node IDs, a local `std::vector<Node>`, split count, and score.
+- **Regional impurity** is **cell-count weighted Gini** (total cells in the region times standard Gini), summed over pending regions. The **state score** adds a **split penalty** scaled by `0.05 * fspaceOriginal.nbCells` (and different formulas when **`-bh`** is non-zero—see implementation in `buildBeamExact()`).
 
-Algorithm:
+Algorithm (high level):
 
-1. Initialize the beam with a single state:
-   - One root leaf covering the whole space,
-   - Root classification = majority class over all cells.
-2. While the beam is non-empty and a max-iteration guard is not hit:
-   - If all regions in all states are pure, stop.
-   - For each state in the current beam:
-     - Choose the **most impure region** to expand.
-     - Enumerate all candidate splits `(feature k, level l)` for that region.
-     - For each candidate, compute:
-       - Left/right child regions and class counts via `computeClassCountsRegion`,
-       - Weighted Gini impurity of the split.
-     - Keep the **top few** (currently 3) candidate splits, and for each:
-       - Create a child state by:
-         - Turning the parent node into an internal node with that split,
-         - Creating left/right leaf children with majority labels,
-         - Updating the pending region list and node-ID mapping.
-       - Recompute the child’s score.
-   - Merge all child states into a new beam, sort by score, and keep the best `B`.
-3. After termination, pick the best state in the beam and copy its `tree` into `rebornTree`, recomputing `finalSplits`, `finalLeaves`, and `finalDepth`.
+1. Initialize the beam with one state: a root leaf for the full space (majority class).
+2. Until all regions are pure or a max-iteration cap is reached:
+   - For each beam state, pick a **pending region to expand** (highest priority score; depends on **`-bh`**).
+   - Enumerate admissible splits; rank by **weighted Gini** of children (with an extra imbalance penalty when **`-bh 2`**).
+   - Expand the **top 3** candidate splits per state (not every split).
+   - Collect child states, sort by score, retain the best **`beamWidth`** states.
+3. Copy the lowest-score state’s tree into `rebornTree` and recompute depth / leaf / split statistics.
 
-`-obj 7` in the CLI now calls `buildBeamExact`, so beam search is fully implemented and usable.
+**`-bh` (beam heuristic)** is parsed in `Commandline` and stored in `Params::beamHeuristic`:
+
+| `-bh` | Role |
+|-------|------|
+| `0` | Default: expand region with largest impurity; score uses impurity sum + scaled split penalty. |
+| `1` | Region choice weights impurity by **number of distinct classes**; score adds a term involving a **lower bound on remaining splits**. |
+| `2` | Region choice favors **shallower** pending nodes (`imp / (1 + depth)`); candidate splits are penalized when **child cell counts are imbalanced**. |
+
+`-obj 7` calls `buildBeamExact()` in `main.cpp`.
 
 ---
 
@@ -258,9 +241,10 @@ This yields clear, quantitative comparisons between optimal DP and approximate g
 
 ---
 
-### 7. Beam width CLI and sanity check (`sanity_check/`)
+### 7. Beam width, `-bh`, and sanity check (`sanity_check/`)
 
-- **`-beam <W>`** (optional, default `5`) sets the beam size for objective **7** only. Parsed in `Commandline.h` and stored in `Params::beamWidth`.
+- **`-beam <W>`** (optional, default `5`) sets the beam size for objective **7** only. Parsed in `Commandline.h` and copied to `Params::beamWidth` in `main.cpp`.
+- **`-bh <h>`** (optional, default `0`) sets `Params::beamHeuristic` for objective **7** as in the table above. Ignored for other objectives.
 - **Regression:** For `beamWidth <= 1`, `buildBeamExact()` **delegates to** `buildGreedyExact()` (a naive beam of width 1 would still differ from greedy because of region expansion order and multi-candidate expansion; delegation makes `-obj 7 -beam 1` and `-obj 6` produce the same tree).
 
 **Recommended check** (uses Python so it works with `bornAgain.exe` on Windows, normalizes CRLF, and avoids PowerShell exit-code quirks):

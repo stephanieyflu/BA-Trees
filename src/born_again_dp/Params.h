@@ -39,7 +39,7 @@ class Params
 public:
 
 	/* GENERAL PARAMETERS */
-	int objectiveFunction;					// 0 = Depth ; 1 = NbLeaves ; 2 = Depth then NbLeaves ; 3 = NbLeaves then Depth (not yet implemented) ; 4 = Heuristic ; 5 = A* NbLeaves ; 6 = GreedyExactCells ; 7 = BeamSearchExactCells (not yet implemented)
+	int objectiveFunction;					// 0 = Depth ; 1 = NbLeaves ; 2 = Depth then NbLeaves ; 3 = NbLeaves then Depth (not implemented) ; 4 = Heuristic ; 5 = A* NbLeaves ; 6 = GreedyExactCells ; 7 = BeamSearchExactCells
 	int beamWidth;							// Beam size for objective 7 (default 5); values <= 1 delegate to greedy construction
 	int nbCellsSampled;						// Number of cells sampled (for the heuristic BA trees)
 	int seed;								// Random seed
